@@ -1,0 +1,759 @@
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Downloading swc package @next/swc-win32-x64-msvc... to C:\Users\Admin\AppData\Local\next-swc
+   ▲ Next.js 15.6.0-canary.59 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.1.2:3000
+   - Environments: .env
+   - Experiments (use with caution):
+     ✓ ppr
+     ✓ rdcForNavigations (enabled by `experimental.ppr`)
+
+ ✓ Starting...
+ ✓ Compiled middleware in 322ms
+
+   We detected TypeScript in your project and reconfigured your tsconfig.json file for you.
+   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
+
+   	- include was updated to add '.next\dev/types/**/*.ts'
+
+   The following mandatory changes were made to your tsconfig.json:
+
+   	- jsx was set to react-jsx (next.js uses the React automatic runtime)
+
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Ready in 20.2s
+ ○ Compiling / ...
+ ✓ Compiled / in 5.4s
+ GET / 200 in 5793ms
+ ○ Compiling /sign-in ...
+ ✓ Compiled /sign-in in 1016ms
+ GET /sign-in 200 in 1104ms
+ ✓ Compiled /sign-up in 794ms
+ GET /sign-up 200 in 858ms
+ ○ Compiling /pricing ...
+ ✓ Compiled /pricing in 1009ms
+ ⨯ Error: Invalid API Key provided: sk_test_**********************ured
+    at ignore-listed frames {
+  type: 'StripeAuthenticationError',
+  raw: [Object],
+  rawType: 'invalid_request_error',
+  code: undefined,
+  doc_url: undefined,
+  param: undefined,
+  detail: undefined,
+  headers: [Object],
+  requestId: undefined,
+  statusCode: 401,
+  userMessage: undefined,
+  charge: undefined,
+  decline_code: undefined,
+  payment_intent: undefined,
+  payment_method: undefined,
+  payment_method_type: undefined,
+  setup_intent: undefined,
+  source: undefined,
+  digest: '2277678903'
+}
+ GET /pricing 500 in 1556ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled in 113ms
+ ✓ Compiled /pricing in 156ms
+ GET /pricing 200 in 404ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 1216ms
+ GET /dashboard 200 in 1346ms
+ ○ Compiling /dashboard/ecommerce ...
+ ✓ Compiled /dashboard/ecommerce in 1010ms
+ GET /dashboard/ecommerce 200 in 1134ms
+ ○ Compiling /dashboard/ecommerce/analytics ...
+ ✓ Compiled /dashboard/ecommerce/analytics in 1011ms
+ GET /dashboard/ecommerce/analytics 200 in 1132ms
+ ○ Compiling /dashboard/ecommerce/shops ...
+ ✓ Compiled /dashboard/ecommerce/shops in 1010ms
+ GET /dashboard/ecommerce/shops 200 in 1128ms
+ ○ Compiling /dashboard/billing ...
+ ✓ Compiled /dashboard/billing in 972ms
+ GET /dashboard/billing 200 in 1094ms
+ ○ Compiling /admin ...
+ ✓ Compiled /admin in 1054ms
+ GET /admin 200 in 1143ms
+ ○ Compiling /api/user ...
+ ✓ Compiled /api/user in 647ms
+ GET /api/user 200 in 814ms
+ GET /api/user 200 in 9ms
+ ✓ Compiled /api/team in 372ms
+ GET /api/team 200 in 400ms
+ ✓ Compiled /api/plan in 359ms
+ GET /api/plan 200 in 398ms
+ ✓ Compiled /api/ecommerce/analytics in 394ms
+ GET /api/ecommerce/analytics 200 in 541ms
+ ✓ Compiled /api/ai/usage in 350ms
+ GET /api/ai/usage 200 in 396ms
+ ✓ Compiled /api/admin/stats in 384ms
+ GET /api/admin/stats 200 in 415ms
+ ✓ Compiled /api/ai/scenes in 501ms
+ POST /api/ai/scenes 200 in 556ms
+ POST /api/ai/scenes 402 in 18ms
+ ○ Compiling /dashboard/ai ...
+ ✓ Compiled /dashboard/ai in 1014ms
+ GET /dashboard/ai 200 in 1134ms
+ ○ Compiling /dashboard/ai/keys ...
+ ✓ Compiled /dashboard/ai/keys in 1047ms
+ GET /dashboard/ai/keys 200 in 1172ms
+ ○ Compiling /dashboard/ecommerce/copywriting ...
+ ✓ Compiled /dashboard/ecommerce/copywriting in 1003ms
+ GET /dashboard/ecommerce/copywriting 200 in 1148ms
+ ○ Compiling /dashboard/ecommerce/marketing ...
+ ✓ Compiled /dashboard/ecommerce/marketing in 1088ms
+ GET /dashboard/ecommerce/marketing 200 in 1236ms
+ ○ Compiling /dashboard/ecommerce/service ...
+ ✓ Compiled /dashboard/ecommerce/service in 1079ms
+ GET /dashboard/ecommerce/service 200 in 1215ms
+ ○ Compiling /dashboard/ecommerce/knowledge ...
+ ✓ Compiled /dashboard/ecommerce/knowledge in 1001ms
+ GET /dashboard/ecommerce/knowledge 200 in 1137ms
+ ○ Compiling /dashboard/ecommerce/import ...
+ ✓ Compiled /dashboard/ecommerce/import in 1068ms
+ GET /dashboard/ecommerce/import 200 in 1217ms
+ ○ Compiling /dashboard/activity ...
+ ✓ Compiled /dashboard/activity in 926ms
+ GET /dashboard/activity 200 in 1058ms
+ GET / 200 in 73ms
+ HEAD / 200 in 52ms
+ GET / 200 in 110ms
+ GET /api/user 200 in 22ms
+ GET / 200 in 132ms
+ GET /api/user 200 in 23ms
+ GET /api/user 200 in 9ms
+ GET /api/user 200 in 7ms
+ GET /sign-in 200 in 77ms
+ GET /dashboard 200 in 50ms
+ POST /sign-in 303 in 214ms
+ GET /api/user 200 in 13ms
+ GET /api/team 200 in 17ms
+ GET /sign-in 200 in 18ms
+ GET / 200 in 147ms
+ GET /api/user 200 in 7ms
+ GET /api/user 200 in 21ms
+ GET /api/user 200 in 18ms
+ GET /api/user 200 in 23ms
+ GET /api/user 200 in 11ms
+ GET /api/user 200 in 11ms
+ GET /api/user 200 in 14ms
+ GET /api/user 200 in 20ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled / in 125ms
+ GET / 200 in 431ms
+ GET / 200 in 498ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled in 364ms
+ GET / 200 in 719ms
+ GET / 200 in 720ms
+ GET / 200 in 925ms
+ GET / 200 in 926ms
+ GET /api/user 200 in 16ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled / in 105ms
+ GET / 200 in 365ms
+ GET / 200 in 480ms
+ GET / 200 in 127ms
+ GET / 200 in 197ms
+ GET / 200 in 111ms
+ GET / 200 in 115ms
+ GET / 200 in 89ms
+ GET / 200 in 148ms
+ GET / 200 in 100ms
+ GET / 200 in 102ms
+ GET / 200 in 99ms
+ GET / 200 in 98ms
+ GET / 200 in 93ms
+ GET / 200 in 95ms
+ GET / 200 in 87ms
+ GET / 200 in 130ms
+ GET / 200 in 93ms
+ GET / 200 in 59ms
+ GET / 200 in 88ms
+ GET / 200 in 53ms
+ GET / 200 in 90ms
+ GET / 200 in 53ms
+ GET / 200 in 90ms
+ GET / 200 in 53ms
+ GET / 200 in 83ms
+ GET / 200 in 53ms
+ GET / 200 in 49ms
+ GET / 200 in 85ms
+ GET / 200 in 81ms
+ GET / 200 in 52ms
+ GET / 200 in 91ms
+ GET / 200 in 52ms
+ GET / 200 in 87ms
+ GET / 200 in 52ms
+ GET / 200 in 81ms
+ GET / 200 in 48ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled / in 35ms
+ GET / 200 in 307ms
+ GET / 200 in 446ms
+ GET / 200 in 142ms
+ GET / 200 in 229ms
+ GET / 200 in 159ms
+ GET / 200 in 163ms
+ GET / 200 in 99ms
+ GET / 200 in 61ms
+ GET / 200 in 91ms
+ GET / 200 in 104ms
+ GET / 200 in 157ms
+ GET / 200 in 156ms
+ GET / 200 in 96ms
+ GET / 200 in 59ms
+ GET / 200 in 88ms
+ GET / 200 in 97ms
+ GET / 200 in 97ms
+ GET / 200 in 56ms
+ GET / 200 in 88ms
+ GET / 200 in 92ms
+ GET / 200 in 85ms
+ GET / 200 in 51ms
+ GET / 200 in 82ms
+ GET / 200 in 47ms
+ GET / 200 in 83ms
+ GET / 200 in 52ms
+ GET / 200 in 87ms
+ GET / 200 in 55ms
+ GET / 200 in 84ms
+ GET / 200 in 50ms
+ GET / 200 in 85ms
+ GET / 200 in 51ms
+ GET / 200 in 86ms
+ GET / 200 in 51ms
+ GET / 200 in 82ms
+ GET / 200 in 49ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled / in 52ms
+ GET / 200 in 342ms
+ GET / 200 in 479ms
+ GET / 200 in 142ms
+ GET / 200 in 200ms
+ GET / 200 in 109ms
+ GET / 200 in 120ms
+ GET / 200 in 111ms
+ GET / 200 in 109ms
+ GET / 200 in 97ms
+ GET / 200 in 64ms
+ GET / 200 in 109ms
+ GET / 200 in 69ms
+ GET / 200 in 67ms
+ GET / 200 in 116ms
+ GET / 200 in 111ms
+ GET / 200 in 179ms
+ GET / 200 in 165ms
+ GET / 200 in 122ms
+ GET / 200 in 107ms
+ GET / 200 in 63ms
+ GET / 200 in 105ms
+ GET / 200 in 64ms
+ GET / 200 in 89ms
+ GET / 200 in 56ms
+ GET / 200 in 93ms
+ GET / 200 in 53ms
+ GET / 200 in 87ms
+ GET / 200 in 87ms
+ GET / 200 in 93ms
+ GET / 200 in 54ms
+ GET / 200 in 92ms
+ GET / 200 in 53ms
+ GET / 200 in 92ms
+ GET / 200 in 59ms
+ GET / 200 in 89ms
+ GET / 200 in 52ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled in 97ms
+ GET / 200 in 127ms
+ GET / 200 in 73ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled in 99ms
+ GET / 200 in 108ms
+ GET / 200 in 69ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled / in 149ms
+ GET / 200 in 848ms
+ GET / 200 in 845ms
+ GET / 200 in 1113ms
+ GET / 200 in 1109ms
+ GET /api/user 200 in 8ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled / in 50ms
+ ✓ Compiled in 304ms
+ GET / 200 in 608ms
+ GET / 200 in 619ms
+ GET / 200 in 516ms
+ GET / 200 in 362ms
+ GET /api/user 200 in 17ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled / in 96ms
+ GET / 200 in 638ms
+ GET / 200 in 641ms
+ GET / 200 in 965ms
+ GET / 200 in 954ms
+ GET /api/user 200 in 14ms
+ GET / 200 in 80ms
+ GET / 200 in 93ms
+ ✓ Compiled /sign-in in 291ms
+ GET /sign-in 200 in 538ms
+ ✓ Compiled /_not-found/page in 858ms
+ GET /no-such-page 404 in 940ms
+ ✓ Compiled /dashboard in 294ms
+ GET /dashboard 200 in 722ms
+ ○ Compiling /dashboard/general ...
+ ✓ Compiled /dashboard/general in 907ms
+ GET /dashboard/general 200 in 1037ms
+ ○ Compiling /dashboard/security ...
+ ✓ Compiled /dashboard/security in 968ms
+ GET /dashboard/security 200 in 1138ms
+ ✓ Compiled /dashboard/activity in 185ms
+ GET /dashboard/activity 200 in 649ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled in 815ms
+ ✓ Compiled middleware in 6ms
+ ✓ Compiled / in 25ms
+ GET / 200 in 296ms
+ GET / 200 in 228ms
+ GET / 200 in 167ms
+ GET / 200 in 240ms
+ GET / 200 in 120ms
+ GET / 200 in 73ms
+ GET / 200 in 91ms
+ GET / 200 in 55ms
+ GET / 200 in 49ms
+ GET / 200 in 89ms
+ GET / 200 in 85ms
+ GET / 200 in 50ms
+ GET / 200 in 83ms
+ GET / 200 in 123ms
+ GET / 200 in 97ms
+ GET / 200 in 185ms
+ GET / 200 in 129ms
+ GET / 200 in 76ms
+ GET / 200 in 88ms
+ GET / 200 in 51ms
+ GET / 200 in 90ms
+ GET / 200 in 58ms
+ GET / 200 in 91ms
+ GET / 200 in 53ms
+ GET / 200 in 88ms
+ GET / 200 in 51ms
+ GET / 200 in 51ms
+ GET / 200 in 82ms
+ GET / 200 in 83ms
+ GET / 200 in 49ms
+ GET / 200 in 86ms
+ GET / 200 in 53ms
+ GET / 200 in 84ms
+ GET / 200 in 54ms
+ GET / 200 in 87ms
+ GET / 200 in 54ms
+ GET / 200 in 87ms
+ GET / 200 in 93ms
+ GET / 200 in 87ms
+ GET / 200 in 50ms
+ GET / 200 in 87ms
+ GET / 200 in 51ms
+ GET / 200 in 84ms
+ GET / 200 in 52ms
+ GET / 200 in 86ms
+ GET / 200 in 90ms
+ GET / 200 in 90ms
+ GET / 200 in 54ms
+ GET / 200 in 86ms
+ GET / 200 in 92ms
+ GET / 200 in 85ms
+ GET / 200 in 89ms
+ GET / 200 in 86ms
+ GET / 200 in 48ms
+ GET / 200 in 84ms
+ GET / 200 in 125ms
+ GET / 200 in 86ms
+ GET / 200 in 49ms
+ GET / 200 in 84ms
+ GET / 200 in 53ms
+ GET / 200 in 85ms
+ GET / 200 in 50ms
+ GET / 200 in 90ms
+ GET / 200 in 52ms
+ GET / 200 in 90ms
+ GET / 200 in 56ms
+ GET / 200 in 89ms
+ GET / 200 in 54ms
+ GET / 200 in 118ms
+ GET / 200 in 83ms
+ GET / 200 in 92ms
+ GET / 200 in 94ms
+ GET / 200 in 90ms
+ GET / 200 in 55ms
+ GET / 200 in 92ms
+ GET / 200 in 53ms
+ GET / 200 in 92ms
+ GET / 200 in 55ms
+ GET / 200 in 92ms
+ GET / 200 in 94ms
+ GET / 200 in 89ms
+ GET / 200 in 56ms
+ GET / 200 in 98ms
+ GET / 200 in 99ms
+ GET / 200 in 94ms
+ GET / 200 in 55ms
+ GET / 200 in 88ms
+ GET / 200 in 58ms
+ GET / 200 in 94ms
+ GET / 200 in 55ms
+ GET / 200 in 99ms
+ GET / 200 in 55ms
+ GET / 200 in 88ms
+ GET / 200 in 96ms
+ GET / 200 in 94ms
+ GET / 200 in 59ms
+ GET / 200 in 95ms
+ GET / 200 in 58ms
+ GET / 200 in 89ms
+ GET / 200 in 55ms
+ GET / 200 in 99ms
+ GET / 200 in 97ms
+ GET / 200 in 91ms
+ GET / 200 in 58ms
+ GET / 200 in 100ms
+ GET / 200 in 137ms
+ GET / 200 in 94ms
+ GET / 200 in 57ms
+ GET / 200 in 89ms
+ GET / 200 in 56ms
+ GET / 200 in 90ms
+ GET / 200 in 51ms
+ GET / 200 in 96ms
+ GET / 200 in 140ms
+ GET / 200 in 97ms
+ GET / 200 in 58ms
+ GET / 200 in 97ms
+ GET / 200 in 56ms
+ GET / 200 in 96ms
+ GET / 200 in 58ms
+ GET / 200 in 90ms
+ GET / 200 in 54ms
+ GET / 200 in 96ms
+ GET / 200 in 97ms
+ GET / 200 in 97ms
+ GET / 200 in 104ms
+ GET / 200 in 96ms
+ GET / 200 in 95ms
+ GET / 200 in 88ms
+ GET / 200 in 51ms
+ GET / 200 in 105ms
+ GET / 200 in 64ms
+ GET / 200 in 63ms
+ GET / 200 in 103ms
+ GET / 200 in 59ms
+ GET / 200 in 86ms
+ GET / 200 in 55ms
+ GET / 200 in 87ms
+ GET / 200 in 53ms
+ GET / 200 in 91ms
+ GET / 200 in 60ms
+ GET / 200 in 90ms
+ GET / 200 in 56ms
+ GET / 200 in 91ms
+ GET / 200 in 95ms
+ GET / 200 in 95ms
+ GET / 200 in 91ms
+ GET / 200 in 90ms
+ GET / 200 in 99ms
+ GET / 200 in 94ms
+ GET / 200 in 97ms
+ GET / 200 in 95ms
+ GET / 200 in 55ms
+ GET / 200 in 89ms
+ GET / 200 in 91ms
+ GET / 200 in 104ms
+ GET / 200 in 64ms
+ GET / 200 in 253ms
+ GET / 200 in 201ms
+ GET / 200 in 91ms
+ GET / 200 in 99ms
+ GET / 200 in 92ms
+ GET / 200 in 58ms
+ GET / 200 in 97ms
+ GET / 200 in 59ms
+ GET / 200 in 91ms
+ GET / 200 in 55ms
+ GET / 200 in 86ms
+ GET / 200 in 89ms
+ GET / 200 in 93ms
+ GET / 200 in 57ms
+ GET / 200 in 87ms
+ GET / 200 in 54ms
+ GET / 200 in 89ms
+ GET / 200 in 51ms
+ GET / 200 in 91ms
+ GET / 200 in 52ms
+ GET / 200 in 89ms
+ GET / 200 in 59ms
+ GET / 200 in 93ms
+ GET / 200 in 94ms
+ GET / 200 in 94ms
+ GET / 200 in 92ms
+ GET / 200 in 89ms
+ GET / 200 in 131ms
+ GET / 200 in 89ms
+ GET / 200 in 52ms
+ GET / 200 in 101ms
+ GET / 200 in 99ms
+ GET / 200 in 94ms
+ GET / 200 in 58ms
+ GET / 200 in 128ms
+ GET / 200 in 74ms
+ GET / 200 in 103ms
+ GET / 200 in 98ms
+ GET / 200 in 96ms
+ GET / 200 in 98ms
+ GET / 200 in 90ms
+ GET / 200 in 49ms
+ GET / 200 in 91ms
+ GET / 200 in 100ms
+ GET / 200 in 96ms
+ GET / 200 in 133ms
+ GET / 200 in 91ms
+ GET / 200 in 52ms
+ GET / 200 in 48ms
+ GET / 200 in 92ms
+ GET / 200 in 86ms
+ GET / 200 in 127ms
+ GET / 200 in 98ms
+ GET / 200 in 58ms
+ GET / 200 in 95ms
+ GET / 200 in 54ms
+ GET / 200 in 88ms
+ GET / 200 in 55ms
+ GET / 200 in 92ms
+ GET / 200 in 53ms
+ GET / 200 in 94ms
+ GET / 200 in 55ms
+ GET / 200 in 90ms
+ GET / 200 in 54ms
+ GET / 200 in 92ms
+ GET / 200 in 54ms
+ GET / 200 in 101ms
+ GET / 200 in 144ms
+ GET / 200 in 94ms
+ GET / 200 in 61ms
+ GET / 200 in 88ms
+ GET / 200 in 90ms
+ GET / 200 in 81ms
+ GET / 200 in 49ms
+ GET / 200 in 83ms
+ GET / 200 in 88ms
+ GET / 200 in 86ms
+ GET / 200 in 55ms
+ GET / 200 in 82ms
+ GET / 200 in 50ms
+ GET / 200 in 89ms
+ GET / 200 in 53ms
+ GET / 200 in 84ms
+ GET / 200 in 53ms
+ GET / 200 in 89ms
+ GET / 200 in 56ms
+ GET / 200 in 86ms
+ GET / 200 in 53ms
+ GET / 200 in 81ms
+ GET / 200 in 51ms
+ GET / 200 in 84ms
+ GET / 200 in 49ms
+ GET / 200 in 48ms
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+ ✓ Compiled middleware in 60ms
+ ✓ Compiled / in 24ms
+ GET / 200 in 323ms
+ GET / 200 in 151ms
+ GET / 200 in 636ms
+ GET / 200 in 307ms
+ GET / 200 in 157ms
+ GET / 200 in 205ms
+ GET / 200 in 111ms
+ GET / 200 in 110ms
+ GET / 200 in 67ms
+ GET / 200 in 123ms
+ GET / 200 in 114ms
+ GET / 200 in 70ms
+ GET / 200 in 106ms
+ GET / 200 in 76ms
+ GET / 200 in 104ms
+ GET / 200 in 73ms
+ GET / 200 in 103ms
+ GET / 200 in 109ms
+ GET / 200 in 103ms
+ GET / 200 in 66ms
+ GET / 200 in 120ms
+ GET / 200 in 197ms
+ ✓ Compiled in 2.7s
+ GET / 200 in 302ms
+ GET / 200 in 331ms
+ GET / 200 in 421ms
+ GET / 200 in 245ms
+ GET /api/user 200 in 73ms
+ GET / 200 in 94ms
+ ✓ Compiled in 110ms
+ HEAD / 200 in 90ms
+ GET /api/user 200 in 5ms
+ GET /api/user 200 in 104ms
+ GET / 200 in 181ms
+ GET /api/user 200 in 20ms
+ GET / 200 in 170ms
+ GET /api/user 200 in 6ms
+ ✓ Compiled /sign-up in 180ms
+ GET /sign-up 200 in 350ms
+ ✓ Compiled /sign-in in 73ms
+ GET /sign-in 200 in 246ms
+ ✓ Compiled /dashboard in 58ms
+ GET /api/user 200 in 18ms
+ GET /dashboard 200 in 359ms
+ POST /sign-in 303 in 542ms
+ GET /api/team 200 in 33ms
+ GET /api/user 200 in 11ms
+ GET /api/team 200 in 68ms
+ ✓ Compiled /pricing in 158ms
+ GET /pricing 200 in 466ms
+ POST /dashboard 303 in 514ms
+ GET /dashboard 200 in 14ms
+ GET /api/user 200 in 13ms
+ GET /api/team 200 in 15ms
+ GET /sign-in 200 in 17ms
+ POST /sign-in 200 in 9ms
+ GET /sign-up 200 in 19ms
+ GET /sign-in 200 in 14ms
+ GET /sign-up 200 in 15ms
+ GET /sign-in 200 in 14ms
+ GET /sign-up 200 in 15ms
+ GET /sign-in 200 in 16ms
+ GET /sign-up 200 in 13ms
+ GET /sign-in 200 in 14ms
+ ✓ Compiled /_not-found/page in 113ms
+ GET /login 404 in 428ms
+ GET / 200 in 45ms
+ GET /api/user 200 in 8ms
+ GET /api/user 200 in 9ms
+ GET /sign-up 200 in 21ms
+ GET /sign-in 200 in 16ms
+ GET /dashboard 200 in 56ms
+ POST /sign-in 303 in 134ms
+ GET /api/user 200 in 16ms
+ GET /api/team 200 in 12ms
+ ✓ Compiled /dashboard/ecommerce/copywriting in 170ms
+ GET /dashboard/ecommerce/copywriting 200 in 337ms
+ ○ Compiling /api/ecommerce/shops ...
+ ✓ Compiled /api/ecommerce/shops in 800ms
+ GET /api/ecommerce/products 200 in 837ms
+ GET /api/ecommerce/shops 200 in 840ms
+ GET /api/user 200 in 13ms
+ GET /dashboard/ecommerce/copywriting 200 in 16ms
+ ✓ Compiled /dashboard/ecommerce in 184ms
+ GET /dashboard/ecommerce 200 in 350ms
+ GET /api/plan 200 in 52ms
+ GET /api/ecommerce/shops 200 in 20ms
+ ✓ Compiled /dashboard/ecommerce/marketing in 163ms
+ GET /dashboard/ecommerce/marketing 200 in 333ms
+ GET /dashboard/ecommerce/copywriting 200 in 16ms
+ GET /api/ecommerce/shops 200 in 15ms
+ GET /api/ecommerce/products 200 in 20ms
+ GET /dashboard/ecommerce/marketing 200 in 16ms
+ GET /dashboard/ecommerce/copywriting 200 in 15ms
+ GET /dashboard/ecommerce 200 in 15ms
+ GET /api/plan 200 in 25ms
+ GET /pricing 200 in 44ms
+ GET /api/ecommerce/shops 200 in 25ms
+ GET /api/plan 200 in 27ms
+ GET /dashboard/ecommerce/marketing 200 in 21ms
+ ✓ Compiled /dashboard/ecommerce/service in 205ms
+ GET /dashboard/ecommerce/service 200 in 398ms
+ GET /api/ecommerce/shops 200 in 15ms
+ ✓ Compiled /dashboard/ecommerce/analytics in 178ms
+ GET /dashboard/ecommerce/analytics 200 in 346ms
+ GET /api/ecommerce/analytics 200 in 129ms
+ ✓ Compiled /dashboard/ecommerce/shops in 182ms
+ GET /dashboard/ecommerce/shops 200 in 354ms
+ GET /api/ecommerce/shops 200 in 18ms
+ ✓ Compiled /dashboard/ecommerce/import in 204ms
+ GET /dashboard/ecommerce/import 200 in 428ms
+ GET /api/ecommerce/shops 200 in 13ms
+ ✓ Compiled /dashboard/ecommerce/knowledge in 178ms
+ GET /dashboard/ecommerce/knowledge 200 in 353ms
+ ✓ Compiled /api/ai/knowledge in 403ms
+ GET /api/ai/knowledge 200 in 435ms
+ ✓ Compiled /dashboard/billing in 184ms
+ GET /dashboard/billing 200 in 353ms
+ ✓ Compiled /api/billing/usage in 361ms
+ GET /api/billing/usage 200 in 397ms
+ ✓ Compiled /dashboard/ai in 165ms
+ GET /dashboard/ai 200 in 337ms
+ ✓ Compiled /api/ai/projects in 413ms
+ GET /api/ai/projects 200 in 452ms
+ GET /dashboard/billing 200 in 37ms
+ GET /dashboard/ai 200 in 15ms
+ GET /api/ai/projects 200 in 20ms
+ ○ Compiling /dashboard/ai/projects ...
+ ✓ Compiled /dashboard/ai/projects in 1015ms
+ GET /dashboard/ai/projects 200 in 1050ms
+ GET /api/ai/projects 200 in 24ms
+ GET /dashboard/ai/projects 200 in 14ms
+ ✓ Compiled /dashboard/ai/keys in 183ms
+ GET /dashboard/ai/keys 200 in 349ms
+ ✓ Compiled /api/ai/keys in 404ms
+ GET /api/ai/keys 200 in 438ms
+ ○ Compiling /dashboard/ai/usage ...
+ ✓ Compiled /dashboard/ai/usage in 1030ms
+ GET /dashboard/ai/usage 200 in 1081ms
+ GET /api/ai/usage 200 in 42ms
+ GET /dashboard/ai/usage 200 in 22ms
+ ✓ Compiled /dashboard/general in 126ms
+ GET /dashboard/general 200 in 295ms
+ GET /api/user 200 in 9ms
+ ✓ Compiled /dashboard/activity in 83ms
+ GET /dashboard/activity 200 in 417ms
+ ✓ Compiled /dashboard/security in 104ms
+ GET /dashboard/security 200 in 270ms
+ GET /api/user 200 in 18ms
+ GET /api/user 200 in 12ms
+ GET /api/user 200 in 9ms
+ GET /dashboard/ai/keys 200 in 26ms
+ GET /api/ai/keys 200 in 16ms
+ GET /dashboard/ai/projects 200 in 23ms
+ GET /api/ai/projects 200 in 29ms
+ GET /dashboard/ai/keys 200 in 25ms
+ GET /api/ai/keys 200 in 26ms
+ GET /dashboard/ai/projects 200 in 19ms
+ GET /api/ai/projects 200 in 14ms
+ GET /dashboard/ai 200 in 16ms
+ GET /dashboard/ai/projects 200 in 18ms
+ GET /api/ai/projects 200 in 18ms
+ GET /dashboard/ai/keys 200 in 16ms
+ GET /api/ai/keys 200 in 25ms
+ GET /api/user 200 in 16ms
+ GET /api/ai/keys 200 in 19ms
+ GET /api/user 200 in 10ms
+ GET /api/ai/keys 200 in 19ms
+ GET /api/user 200 in 15ms
+ GET /api/ai/keys 200 in 21ms
+ GET /api/user 200 in 15ms

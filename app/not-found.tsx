@@ -1,0 +1,27 @@
+import Link from 'next/link';
+import { Sparkles } from 'lucide-react';
+import { brand } from '@/lib/brand';
+
+export default function NotFound() {
+  return (
+    <div className="flex items-center justify-center min-h-[100dvh]">
+      <div className="max-w-md space-y-8 p-4 text-center">
+        <div className="flex justify-center">
+          <Sparkles className="size-12 text-orange-500" />
+        </div>
+        <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
+          页面走丢了
+        </h1>
+        <p className="text-base text-gray-500">
+          你访问的页面可能已被移除、重命名，或暂时不可用。
+        </p>
+        <Link
+          href="/"
+          className="max-w-48 mx-auto flex justify-center py-2 px-4 border border-gray-300 rounded-full shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+        >
+          返回 {brand.name} 首页
+        </Link>
+      </div>
+    </div>
+  );
+}
