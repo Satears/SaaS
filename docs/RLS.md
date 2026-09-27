@@ -194,3 +194,60 @@ RLS 是**可随时开关的叠加层**，不影响应用层已有的 team_id 过
 
 > 这仍属于「应用层兜底」，无法防御绕过应用直接连库的路径。重新打开 RLS 的前置条件
 > 与第三节步骤 2、3 完全一致，未发生变化。
+
+---
+
+## 八、启用 RLS 的新方案（2026-09-27 起，以此为准）
+
+> ⚠️ 第一至七节描述的是**旧方案**，其中两条说法已作废，见下。
+
+### 8.1 旧方案中被作废的说法
+
+| 旧说法 | 实际情况 |
+|---|---|
+| 「`withServiceRole()` 可绕过 RLS」 | **无效实现**。它设置 `app.bypass_rls`，但 `app_is_admin()` 判断的是 `current_user`，两者对不上。该函数若无调用方则等同死代码 |
+| 「不建议使用 `FORCE ROW LEVEL SECURITY`」 | 结论正确，但原因需补充：`FORCE` 会让**表 owner 也受策略约束**，从而使 owner 身份的 `SECURITY DEFINER` 函数一并被拦下，**特权路径方案会失效**。`0009` 已统一清除 FORCE |
+
+### 8.2 核心设计
+
+引入第二个会话变量 **`app.user_id`**，与 `app.team_id` 配合，解决两类死锁：
+
+| 死锁 | 原因 | 解法 |
+|---|---|---|
+| 登录 | 要先读 `team_members` 才知道 `team_id`，但该表受 RLS 约束且此刻无 `team_id` | `team_members` 策略放行 `user_id = app.user_id` 的行 |
+| 注册 | `WITH CHECK (team_id = app_current_team_id())` 在新建 team 尚无 id 时必然失败（**上次生产 500 的根因**） | `teams` 的 `WITH CHECK` 放行 `app.user_id` 非空时的 INSERT |
+
+由此，**登录与注册都不再需要特权路径**。仅剩两处必须绕过的流程，以 `SECURITY DEFINER` 函数实现（owner 身份执行，固定 `search_path`，仅授权 `app_runtime`）：
+
+- `app_find_team_by_stripe_customer(text)` —— Stripe webhook 无用户会话，需按 customerId 跨租户定位 team
+- 平台后台跨租户统计 —— **尚未实现**，需要时按同样方式补一个函数
+
+### 8.3 已完成：`0009_rls_context.sql`
+
+只做前置准备，**不启用 RLS**，因此可在任何环境安全执行：
+
+1. 新增 `app_current_user_id()`
+2. 修订 `teams` / `team_members` 策略（本租户 OR 本人所属 OR 平台管理员）
+3. 清除 15 张表的 `FORCE ROW LEVEL SECURITY`
+4. 新增 `app_find_team_by_stripe_customer()` 特权函数
+
+**实测结论**（临时库中手动启用 RLS，并以 `app_runtime` 真实连接断言，13/13 通过）：
+
+```
+无上下文查询 products/teams  → 0 行（默认拒绝）
+app.team_id=1 查询            → 仅见本租户行
+app.team_id=1 跨租户写入      → 被拒 42501
+app.team_id=1 本租户写入      → 成功
+app.user_id=1 查询            → 见本人成员行与所属 team
+SECURITY DEFINER 跨租户定位   → 成功
+```
+
+### 8.4 尚未完成（启用 RLS 前必须做）
+
+1. **应用层接线**：`withTenantContext(teamId, userId, fn)` 需要同时设置 `app.team_id` 与 `app.user_id`；目前该函数**零调用方**，约 20 处租户查询需要逐一包进事务。
+2. **注册流程**：创建 user 后的建 team / 建 membership 必须放进设置了 `app.user_id` 的事务。
+3. **webhook**：改用 `app_find_team_by_stripe_customer()` 替代现有的跨租户查询。
+4. **平台后台统计**：需补一个 `SECURITY DEFINER` 聚合函数，否则 `/admin` 会被 RLS 拦成空数据。
+5. **删除或修复 `withServiceRole()`**：当前是无效实现。
+6. **启用步骤本身**：写成独立迁移（如 `0010_rls_enable.sql`），**先只在 Preview 库执行并跑通全链路，确认无 42501 与空集后再上生产**。在该迁移被登记进 `meta/_journal.json` 之前，`pnpm db:migrate` **不会**启用 RLS —— 这是刻意留出的安全闸门。
+
