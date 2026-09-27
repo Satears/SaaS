@@ -85,6 +85,13 @@
       "when": 1727393759662,
       "tag": "0012_signup_privileged",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1727469359662,
+      "tag": "0011_rls_enable",
+      "breakpoints": true
     }
   ]
 }
