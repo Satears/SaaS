@@ -7,6 +7,26 @@
 
 ---
 
+## 〇、当前状态（务必先读）
+
+`0006_rls_policies.sql` 同时对租户表执行了 `ENABLE` **和** `FORCE ROW LEVEL SECURITY`。
+`FORCE` 会让**表 owner 也受策略约束**，而应用是用 owner 账号（`POSTGRES_URL`）直连的，
+于是策略里的 `WITH CHECK (team_id = app_current_team_id())` 变成硬约束；但应用侧
+从未设置过 `app.team_id`（`withTenantContext()` 只有定义、没有调用方），因此：
+
+- 注册（`INSERT INTO teams` / `team_members`）直接失败：
+  `new row violates row-level security policy for table "teams"`（SQLSTATE `42501`，routine `ExecWithCheckOptions`）
+- 所有 RLS 表的 `SELECT` 因 `app.team_id` 为空而**静默返回空集**（仪表盘拿不到 team）
+
+`0007_rls_disable_force.sql` 的处置是：**保留 RLS（ENABLE + 策略），仅去掉 `FORCE`**，
+让应用连接账号（表 owner）绕过策略，RLS 仍对其他角色生效。
+
+> 也就是说：**当前 RLS 是「已铺设但未真正约束业务请求」的纵深防御骨架**。
+> 只有在完成「第三节步骤 2 + 步骤 3」（改用非 owner 角色连接，并把
+> `withTenantContext` 接进所有租户查询）之后，才可以把 `FORCE` 加回来。
+
+---
+
 ## 一、工作机制
 
 ```
@@ -60,7 +80,10 @@ pnpm db:migrate   # 执行 0006_rls_policies.sql
 CREATE ROLE app_user NOLOGIN;
 GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
-ALTER TABLE "teams" FORCE ROW LEVEL SECURITY;  -- 让 owner 也受 RLS 约束
+
+-- ⚠️ 只有在这一步（应用改用 app_user 连接、且 withTenantContext 已接线）完成后，
+--    才可以把 FORCE 加回来；否则会重现第〇节的注册 500。
+ALTER TABLE "teams" FORCE ROW LEVEL SECURITY;
 ```
 
 ### 步骤 3：应用层接线
@@ -97,7 +120,9 @@ const team = await withServiceRole(() => getTeamByStripeCustomerId(customerId));
 | 平台后台统计 | 全部表聚合 | ❌ 跨租户 | `app_admin` 角色 / `withServiceRole` |
 | `users` / `plans` 表 | 全局表（无 team_id） | — | 不启用 RLS（本迁移未对其启用） |
 
-> 本迁移**只对含 `team_id` 的租户数据表**启用 RLS，`users` / `plans` 等全局表不受影响，登录/注册不会因此中断。
+> 本迁移**只对含 `team_id` 的租户数据表**启用 RLS，`users` / `plans` 等全局表不受影响。
+> 但注意：`注册` 会向 `teams` / `team_members` 写入，这两张表**在 RLS 范围内**，
+> 因此在 `withServiceRole` 真正可用之前，注册**会被中断**（见第〇节的生产故障复盘）。
 
 ---
 
