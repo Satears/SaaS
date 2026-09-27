@@ -1,4 +1,4 @@
-import { desc, asc, and, eq, isNull, sql, gte, count, type InferSelectModel } from 'drizzle-orm';
+import { desc, asc, and, eq, isNull, sql, gte, count } from 'drizzle-orm';
 import { db } from './drizzle';
 import { withTenantContext, type TenantTx } from './tenant';
 import {
@@ -80,22 +80,24 @@ export function toPublicUser(user: User): PublicUser {
 /**
  * 按 Stripe customerId 定位 team。
  *
- * 跨租户查询：Stripe webhook 没有用户会话，无法提供 app.team_id / app.user_id。
- * 因此先走特权路径取 id（SECURITY DEFINER，只返回 id，见 0010_privileged_functions.sql），
- * 拿到 id 后立即回到正常租户上下文读取整行，避免把整行读权限铺开。
+ * ⚠️ 跨租户查询：Stripe webhook 没有用户会话，无法提供 app.team_id / app.user_id。
+ *
+ * 数据库先行原则：此处暂用裸查询，因为生产库尚未应用 0010 迁移。
+ * 若提前改成调用 app_find_team_id_by_stripe_customer()，而该函数在目标库不存在，
+ * webhook 会直接报错、订阅变更中断。
+ *
+ * 启用 RLS 的正确顺序：**先把 0008~0010 迁移应用到目标库，再切到特权函数**：
+ *   SELECT app_find_team_id_by_stripe_customer($customerId)  → 拿 id
+ *   然后 withTenantContext(teamId, null, ...) 读整行
  */
 export async function getTeamByStripeCustomerId(customerId: string) {
-  const rows = (await db.execute(
-    sql`SELECT app_find_team_id_by_stripe_customer(${customerId}) AS team_id`
-  )) as unknown as { team_id: number | null }[];
+  const result = await db
+    .select()
+    .from(teams)
+    .where(eq(teams.stripeCustomerId, customerId))
+    .limit(1);
 
-  const teamId = rows[0]?.team_id ?? null;
-  if (!teamId) return null;
-
-  const [team] = await withTenantContext(teamId, null, (tx) =>
-    tx.select().from(teams).where(eq(teams.id, teamId)).limit(1)
-  );
-  return team ?? null;
+  return result.length > 0 ? result[0] : null;
 }
 
 export async function updateTeamSubscription(
@@ -417,25 +419,24 @@ export async function getRecentUsageForTeam(teamId: number, limit = 20) {
 // ─────────────────────────────────────────────
 
 /**
- * 跨租户聚合（平台后台）：无法提供 team 上下文，走特权聚合函数
- * （SECURITY DEFINER，见 0010_privileged_functions.sql），不能用 withTenantContext 包装。
- * 函数返回 camelCase 的 jsonb，此处还原为与 drizzle 一致的类型（时间转回 Date）。
+ * ⚠️ 跨租户聚合（平台后台）：无法提供 team 上下文。
+ *
+ * 数据库先行原则：此处暂用裸查询，因为生产库尚未应用 0010 迁移；
+ * 提前调用 app_all_teams_with_stats() 会让 /admin 在函数缺失时报错。
+ * 启用 RLS 时改为调用该函数（返回 camelCase jsonb，需把时间转回 Date）。
  */
-export async function getAllTeamsWithStats(): Promise<
-  (InferSelectModel<typeof teams> & { memberCount: number })[]
-> {
-  const rows = (await db.execute(
-    sql`SELECT team, member_count FROM app_all_teams_with_stats()`
-  )) as unknown as {
-    team: InferSelectModel<typeof teams>;
-    member_count: number | string;
-  }[];
+export async function getAllTeamsWithStats() {
+  const allTeams = await db.select().from(teams).orderBy(desc(teams.createdAt));
+  const memberCounts = await db
+    .select({ teamId: teamMembers.teamId, count: sql<number>`COUNT(*)` })
+    .from(teamMembers)
+    .groupBy(teamMembers.teamId);
 
-  return rows.map((r) => ({
-    ...r.team,
-    createdAt: new Date(r.team.createdAt),
-    updatedAt: new Date(r.team.updatedAt),
-    memberCount: Number(r.member_count),
+  const countMap = new Map(memberCounts.map((r) => [r.teamId, Number(r.count)]));
+
+  return allTeams.map((team) => ({
+    ...team,
+    memberCount: countMap.get(team.id) ?? 0,
   }));
 }
 
