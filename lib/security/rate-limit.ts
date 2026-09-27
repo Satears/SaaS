@@ -3,9 +3,10 @@ import 'server-only';
 /**
  * 速率限制。
  *
- * - 配置了 `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` 时，使用 Upstash
- *   Redis 做分布式计数（Vercel 多实例共享同一份计数，限流才真正生效）。
- *   走 REST 接口 + fetch，不引入额外依赖。
+ * - 配置了 Upstash 凭据时，使用 Upstash Redis 做分布式计数（Vercel 多实例共享
+ *   同一份计数，限流才真正生效）。走 REST 接口 + fetch，不引入额外依赖。
+ *   凭据读取顺序：`UPSTASH_REDIS_REST_URL/TOKEN`（手工配置）优先，
+ *   其次 `KV_REST_API_URL/TOKEN`（Vercel 的 Upstash 集成自动注入，用 KV_ 前缀）。
  * - 未配置或 Upstash 不可用时，退化为单实例内存计数（保证可用性，但多实例下会失效）。
  */
 
@@ -22,8 +23,11 @@ type Bucket = {
 
 const store = new Map<string, Bucket>();
 
-const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL?.replace(/\/+$/, '');
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const UPSTASH_URL = (
+  process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
+)?.replace(/\/+$/, '');
+const UPSTASH_TOKEN =
+  process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
 
 /**
  * 检查并记录一次请求。返回是否允许。

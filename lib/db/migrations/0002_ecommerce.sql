@@ -1,23 +1,23 @@
 -- 0002 电商运营数据模型 + 套餐场景化扩展
 
 -- 扩展 plans：电商场景配额与功能开关
-ALTER TABLE "plans" ADD COLUMN "quota_shops" integer DEFAULT 1 NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "quota_shops" integer DEFAULT 1 NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "quota_products" integer DEFAULT 50 NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "quota_products" integer DEFAULT 50 NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "quota_copies_monthly" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "quota_copies_monthly" integer DEFAULT 0 NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "quota_campaigns_monthly" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "quota_campaigns_monthly" integer DEFAULT 0 NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "quota_service_sessions_monthly" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "quota_service_sessions_monthly" integer DEFAULT 0 NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "feature_copywriting" boolean DEFAULT false NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "feature_copywriting" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "feature_marketing" boolean DEFAULT false NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "feature_marketing" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "feature_customer_service" boolean DEFAULT false NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "feature_customer_service" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "plans" ADD COLUMN "feature_analytics" boolean DEFAULT false NOT NULL;
+ALTER TABLE "plans" ADD COLUMN IF NOT EXISTS "feature_analytics" boolean DEFAULT false NOT NULL;
 --> statement-breakpoint
 
 -- 更新既有计划的功能开关与场景配额

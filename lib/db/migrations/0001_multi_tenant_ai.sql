@@ -1,17 +1,29 @@
 -- 0001 多租户 + 配额 + AI 资源扩展
-CREATE TYPE "public"."user_role" AS ENUM ('admin', 'user');
+DO $$ BEGIN
+  CREATE TYPE "public"."user_role" AS ENUM ('admin', 'user');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
-CREATE TYPE "public"."member_role" AS ENUM ('owner', 'admin', 'member');
+DO $$ BEGIN
+  CREATE TYPE "public"."member_role" AS ENUM ('owner', 'admin', 'member');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
-CREATE TYPE "public"."plan_tier" AS ENUM ('free', 'pro', 'business', 'enterprise');
+DO $$ BEGIN
+  CREATE TYPE "public"."plan_tier" AS ENUM ('free', 'pro', 'business', 'enterprise');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
-CREATE TYPE "public"."subscription_status" AS ENUM ('inactive', 'active', 'trialing', 'past_due', 'canceled', 'unpaid');
+DO $$ BEGIN
+  CREATE TYPE "public"."subscription_status" AS ENUM ('inactive', 'active', 'trialing', 'past_due', 'canceled', 'unpaid');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 --> statement-breakpoint
 
 -- 迁移 users.role -> platform_role
-ALTER TABLE "users" ADD COLUMN "platform_role" "user_role" DEFAULT 'user' NOT NULL;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "platform_role" "user_role" DEFAULT 'user' NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "users" DROP COLUMN "role";
+ALTER TABLE "users" DROP COLUMN IF EXISTS "role";
 --> statement-breakpoint
 
 -- 迁移 team_members.role 为枚举（字符串值兼容）
@@ -19,11 +31,11 @@ ALTER TABLE "team_members" ALTER COLUMN "role" TYPE "member_role" USING "role"::
 --> statement-breakpoint
 
 -- teams 新增租户字段
-ALTER TABLE "teams" ADD COLUMN "slug" varchar(100);
+ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "slug" varchar(100);
 --> statement-breakpoint
-ALTER TABLE "teams" ADD COLUMN "plan_tier" "plan_tier" DEFAULT 'free' NOT NULL;
+ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "plan_tier" "plan_tier" DEFAULT 'free' NOT NULL;
 --> statement-breakpoint
-ALTER TABLE "teams" ADD COLUMN "custom_quota" jsonb;
+ALTER TABLE "teams" ADD COLUMN IF NOT EXISTS "custom_quota" jsonb;
 --> statement-breakpoint
 -- 将原 varchar 的 subscription_status 转换为枚举
 UPDATE "teams" SET "subscription_status" = 'inactive' WHERE "subscription_status" IS NULL;
