@@ -1,6 +1,8 @@
 import Stripe from 'stripe';
 import { redirect } from 'next/navigation';
-import { Team } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import { db } from '@/lib/db/drizzle';
+import { Team, plans } from '@/lib/db/schema';
 import {
   getTeamByStripeCustomerId,
   getUser,
@@ -27,6 +29,18 @@ export async function createCheckoutSession({
 
   if (!team || !user) {
     redirect(`/sign-up?redirect=checkout&priceId=${priceId}`);
+  }
+
+  // priceId 来自客户端表单，必须在服务端按 plans 表白名单校验，
+  // 否则用户可提交任意 Stripe Price ID 下单。
+  const [allowedPlan] = await db
+    .select({ id: plans.id })
+    .from(plans)
+    .where(eq(plans.stripePriceId, priceId))
+    .limit(1);
+
+  if (!allowedPlan) {
+    redirect('/pricing');
   }
 
   const session = await stripe.checkout.sessions.create({

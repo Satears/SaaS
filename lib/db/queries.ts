@@ -12,7 +12,8 @@ import {
   shops,
   products,
   orders,
-  aiContents
+  aiContents,
+  type User
 } from './schema';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
@@ -47,6 +48,18 @@ export async function getUser() {
   }
 
   return user[0];
+}
+
+/**
+ * 可安全下发给客户端的用户信息（去除 passwordHash 等凭证字段）。
+ * 用于 /api/user 与根布局的 SWR fallback —— 这两处都会把数据序列化进
+ * 客户端响应（RSC 载荷 / HTML），绝不能包含密码哈希。
+ */
+export type PublicUser = Omit<User, 'passwordHash'>;
+
+export function toPublicUser(user: User): PublicUser {
+  const { passwordHash: _passwordHash, ...rest } = user;
+  return rest;
 }
 
 export async function getTeamByStripeCustomerId(customerId: string) {

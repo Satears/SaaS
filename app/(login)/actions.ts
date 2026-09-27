@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db/drizzle';
 import {
-  User,
   users,
   teams,
   teamMembers,
@@ -18,9 +17,14 @@ import {
 } from '@/lib/db/schema';
 import { comparePasswords, hashPassword, setSession } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { createCheckoutSession } from '@/lib/payments/stripe';
-import { getUser, getUserWithTeam } from '@/lib/db/queries';
+import {
+  getMembershipForUser,
+  getUser,
+  getUserWithTeam
+} from '@/lib/db/queries';
+import { rateLimit } from '@/lib/security/rate-limit';
 import {
   validatedAction,
   validatedActionWithUser
@@ -44,6 +48,14 @@ async function logActivity(
   await db.insert(activityLogs).values(newActivity);
 }
 
+/**
+ * 取客户端 IP（Vercel 会写入 x-forwarded-for），用于登录/注册限流。
+ */
+async function getClientIp() {
+  const h = await headers();
+  return h.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+}
+
 const signInSchema = z.object({
   email: z.string().email().min(3).max(255),
   password: z.string().min(8).max(100)
@@ -51,6 +63,12 @@ const signInSchema = z.object({
 
 export const signIn = validatedAction(signInSchema, async (data, formData) => {
   const { email, password } = data;
+
+  // 防暴力破解：同一 IP + 账号 15 分钟内最多 10 次尝试
+  const rl = rateLimit(`signin:${await getClientIp()}:${email}`, 10, 15 * 60_000);
+  if (!rl.allowed) {
+    return { error: '尝试过于频繁，请 15 分钟后再试。' };
+  }
 
   const userWithTeam = await db
     .select({
@@ -66,8 +84,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
   if (userWithTeam.length === 0) {
     return {
       error: '邮箱或密码不正确，请重试。',
-      email,
-      password
+      email
     };
   }
 
@@ -81,8 +98,7 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
   if (!isPasswordValid) {
     return {
       error: '邮箱或密码不正确，请重试。',
-      email,
-      password
+      email
     };
   }
 
@@ -109,6 +125,12 @@ const signUpSchema = z.object({
 export const signUp = validatedAction(signUpSchema, async (data, formData) => {
   const { email, password, inviteId } = data;
 
+  // 防注册刷号：同一 IP 每小时最多 10 次
+  const rl = rateLimit(`signup:${await getClientIp()}`, 10, 60 * 60_000);
+  if (!rl.allowed) {
+    return { error: '注册过于频繁，请稍后再试。' };
+  }
+
   const existingUser = await db
     .select()
     .from(users)
@@ -118,8 +140,7 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
   if (existingUser.length > 0) {
     return {
       error: 'Failed to create user. Please try again.',
-      email,
-      password
+      email
     };
   }
 
@@ -136,8 +157,7 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
   if (!createdUser) {
     return {
       error: 'Failed to create user. Please try again.',
-      email,
-      password
+      email
     };
   }
 
@@ -176,7 +196,7 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
         .where(eq(teams.id, teamId))
         .limit(1);
     } else {
-      return { error: 'Invalid or expired invitation.', email, password };
+      return { error: 'Invalid or expired invitation.', email };
     }
   } else {
     // Create a new team if there's no invitation
@@ -189,8 +209,7 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
     if (!createdTeam) {
       return {
         error: 'Failed to create team. Please try again.',
-        email,
-        password
+        email
       };
     }
 
@@ -222,9 +241,11 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
 });
 
 export async function signOut() {
-  const user = (await getUser()) as User;
-  const userWithTeam = await getUserWithTeam(user.id);
-  await logActivity(userWithTeam?.teamId, user.id, ActivityType.SIGN_OUT);
+  const user = await getUser();
+  if (user) {
+    const userWithTeam = await getUserWithTeam(user.id);
+    await logActivity(userWithTeam?.teamId, user.id, ActivityType.SIGN_OUT);
+  }
   (await cookies()).delete('session');
 }
 
@@ -300,7 +321,6 @@ export const deleteAccount = validatedActionWithUser(
     const isPasswordValid = await comparePasswords(password, user.passwordHash);
     if (!isPasswordValid) {
       return {
-        password,
         error: 'Incorrect password. Account deletion failed.'
       };
     }
@@ -359,7 +379,8 @@ export const updateAccount = validatedActionWithUser(
 );
 
 const removeTeamMemberSchema = z.object({
-  memberId: z.number()
+  // FormData 的值始终是字符串，必须 coerce，否则校验永远失败
+  memberId: z.coerce.number().int().positive()
 });
 
 export const removeTeamMember = validatedActionWithUser(
@@ -370,6 +391,31 @@ export const removeTeamMember = validatedActionWithUser(
 
     if (!userWithTeam?.teamId) {
       return { error: 'User is not part of a team' };
+    }
+
+    // 服务端角色校验：前端隐藏按钮不构成权限边界
+    const callerRole = await getMembershipForUser(user.id);
+    if (callerRole !== 'owner' && callerRole !== 'admin') {
+      return { error: '没有权限移除团队成员' };
+    }
+
+    const [target] = await db
+      .select()
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.id, memberId),
+          eq(teamMembers.teamId, userWithTeam.teamId)
+        )
+      )
+      .limit(1);
+
+    if (!target) {
+      return { error: '成员不存在' };
+    }
+
+    if (target.role === 'owner' && callerRole !== 'owner') {
+      return { error: '只有所有者可以移除其他所有者' };
     }
 
     await db
@@ -404,6 +450,15 @@ export const inviteTeamMember = validatedActionWithUser(
 
     if (!userWithTeam?.teamId) {
       return { error: 'User is not part of a team' };
+    }
+
+    // 服务端角色校验：普通成员不得邀请他人，也不得邀请为 owner
+    const callerRole = await getMembershipForUser(user.id);
+    if (callerRole !== 'owner' && callerRole !== 'admin') {
+      return { error: '没有权限邀请团队成员' };
+    }
+    if (role === 'owner' && callerRole !== 'owner') {
+      return { error: '只有所有者可以邀请所有者' };
     }
 
     const existingMember = await db

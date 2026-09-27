@@ -1,7 +1,7 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Manrope } from 'next/font/google';
-import { getUser, getTeamForUser } from '@/lib/db/queries';
+import { getUser, getTeamForUser, toPublicUser } from '@/lib/db/queries';
 import { brand } from '@/lib/brand';
 import { SWRConfig } from 'swr';
 
@@ -32,7 +32,8 @@ export default function RootLayout({
             fallback: {
               // We do NOT await here
               // Only components that read this data will suspend
-              '/api/user': getUser(),
+              // 必须脱敏：fallback 会被序列化进 RSC 载荷 / HTML
+              '/api/user': getUser().then((u) => (u ? toPublicUser(u) : null)),
               '/api/team': getTeamForUser()
             }
           }}
