@@ -1,6 +1,6 @@
 import 'server-only';
 import { stripe } from '@/lib/payments/stripe';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { eq, and } from 'drizzle-orm';
 import { billingLedger, teams } from '@/lib/db/schema';
 
@@ -101,60 +101,65 @@ export async function createOverageInvoice(params: {
 /**
  * 结算超额账单：对 pending 状态的 overage 记录，
  * 上报 Stripe meter + 创建发票，并把 ledger 标记为 invoiced。
+ *
+ * 说明：本流程需要读写 teams / billing_ledger（均为 RLS 表），必须带 team 上下文；
+ * 由于 Stripe 调用夹在读写之间，整体放在同一事务内（结算为低频后台操作）。
  */
 export async function settleOverageLedger(teamId: number) {
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.id, teamId))
-    .limit(1);
+  return await withTenantContext(teamId, null, async (tx) => {
+    const [team] = await tx
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .limit(1);
 
-  if (!team) return { settled: false, reason: 'team not found' };
+    if (!team) return { settled: false, reason: 'team not found' };
 
-  const pending = await db
-    .select()
-    .from(billingLedger)
-    .where(
-      and(
-        eq(billingLedger.teamId, teamId),
-        eq(billingLedger.kind, 'overage'),
-        eq(billingLedger.status, 'pending')
-      )
-    );
+    const pending = await tx
+      .select()
+      .from(billingLedger)
+      .where(
+        and(
+          eq(billingLedger.teamId, teamId),
+          eq(billingLedger.kind, 'overage'),
+          eq(billingLedger.status, 'pending')
+        )
+      );
 
-  const results = [];
-  for (const entry of pending) {
-    if (entry.amountCents <= 0) {
-      // 零费用直接标记为 waived
-      await db
-        .update(billingLedger)
-        .set({ status: 'waived', updatedAt: new Date() })
-        .where(eq(billingLedger.id, entry.id));
-      results.push({ entryId: entry.id, status: 'waived' });
-      continue;
+    const results = [];
+    for (const entry of pending) {
+      if (entry.amountCents <= 0) {
+        // 零费用直接标记为 waived
+        await tx
+          .update(billingLedger)
+          .set({ status: 'waived', updatedAt: new Date() })
+          .where(eq(billingLedger.id, entry.id));
+        results.push({ entryId: entry.id, status: 'waived' });
+        continue;
+      }
+
+      const invoice = await createOverageInvoice({
+        team,
+        amountCents: entry.amountCents,
+        period: entry.period,
+        description: entry.description ?? undefined,
+      });
+
+      if (invoice.created && invoice.invoiceId) {
+        await tx
+          .update(billingLedger)
+          .set({
+            status: 'invoiced',
+            stripeInvoiceId: invoice.invoiceId,
+            updatedAt: new Date(),
+          })
+          .where(eq(billingLedger.id, entry.id));
+        results.push({ entryId: entry.id, status: 'invoiced', invoiceId: invoice.invoiceId });
+      } else {
+        results.push({ entryId: entry.id, status: 'pending', reason: invoice.reason });
+      }
     }
 
-    const invoice = await createOverageInvoice({
-      team,
-      amountCents: entry.amountCents,
-      period: entry.period,
-      description: entry.description ?? undefined,
-    });
-
-    if (invoice.created && invoice.invoiceId) {
-      await db
-        .update(billingLedger)
-        .set({
-          status: 'invoiced',
-          stripeInvoiceId: invoice.invoiceId,
-          updatedAt: new Date(),
-        })
-        .where(eq(billingLedger.id, entry.id));
-      results.push({ entryId: entry.id, status: 'invoiced', invoiceId: invoice.invoiceId });
-    } else {
-      results.push({ entryId: entry.id, status: 'pending', reason: invoice.reason });
-    }
-  }
-
-  return { settled: true, results };
+    return { settled: true, results };
+  });
 }

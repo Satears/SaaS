@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { eq, and } from 'drizzle-orm';
 import { shops } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
@@ -19,10 +19,12 @@ export async function DELETE(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await db
-    .update(shops)
-    .set({ deletedAt: new Date() })
-    .where(and(eq(shops.id, Number(id)), eq(shops.teamId, ctx.team.id)));
+  await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    await tx
+      .update(shops)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(shops.id, Number(id)), eq(shops.teamId, ctx.team.id)));
+  });
 
   return NextResponse.json({ success: true });
 }

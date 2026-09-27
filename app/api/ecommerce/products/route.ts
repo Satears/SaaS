@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { products } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
 import { getProductsForTeam, getShopById } from '@/lib/db/queries';
@@ -41,25 +41,31 @@ export async function POST(request: NextRequest) {
 
   const body = createSchema.parse(await request.json());
 
-  // 门店归属校验：禁止把商品挂到其它租户的门店上（shopId 来自客户端）
-  const shop = await getShopById(body.shopId, ctx.team.id);
-  if (!shop) {
+  // 门店归属校验 + 商品写入放在同一租户事务内
+  const product = await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    // 门店归属校验：禁止把商品挂到其它租户的门店上（shopId 来自客户端）
+    const shop = await getShopById(body.shopId, ctx.team.id, tx);
+    if (!shop) return null;
+
+    const [created] = await tx
+      .insert(products)
+      .values({
+        teamId: ctx.team.id,
+        shopId: body.shopId,
+        title: body.title,
+        description: body.description ?? null,
+        category: body.category ?? null,
+        price: body.price?.toString() ?? null,
+        sku: body.sku ?? null,
+        attributes: body.attributes ?? null,
+      })
+      .returning();
+    return created ?? null;
+  });
+
+  if (!product) {
     return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
   }
-
-  const [product] = await db
-    .insert(products)
-    .values({
-      teamId: ctx.team.id,
-      shopId: body.shopId,
-      title: body.title,
-      description: body.description ?? null,
-      category: body.category ?? null,
-      price: body.price?.toString() ?? null,
-      sku: body.sku ?? null,
-      attributes: body.attributes ?? null,
-    })
-    .returning();
 
   return NextResponse.json(product, { status: 201 });
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { products } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
 import { getProductsForTeam, getShopById } from '@/lib/db/queries';
@@ -82,7 +82,9 @@ export async function POST(request: NextRequest) {
   }
 
   // 门店归属校验：shopId 来自客户端，必须确认属于当前租户
-  const shop = await getShopById(shopId, ctx.team.id);
+  const shop = await withTenantContext(ctx.team.id, ctx.user.id, (tx) =>
+    getShopById(shopId, ctx.team.id, tx)
+  );
   if (!shop) {
     return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
   }
@@ -91,16 +93,6 @@ export async function POST(request: NextRequest) {
   const rows = csvToObjects(csvText);
   if (rows.length === 0) {
     return NextResponse.json({ error: 'Empty CSV' }, { status: 400 });
-  }
-
-  // 配额校验（导入前预检）
-  const existing = await getProductsForTeam(ctx.team.id, shopId);
-  const quota = await checkProductQuota(ctx.team, existing.length, rows.length);
-  if (!quota.allowed) {
-    return NextResponse.json(
-      { error: quota.reason ?? 'Product quota exceeded' },
-      { status: 402 }
-    );
   }
 
   // 逐行解析并校验
@@ -150,19 +142,33 @@ export async function POST(request: NextRequest) {
     });
   });
 
-  // 批量写入（分批，避免单条插入过多）
-  const BATCH = 200;
-  let inserted = 0;
-  for (let i = 0; i < validRows.length; i += BATCH) {
-    const batch = validRows.slice(i, i + BATCH);
-    const result = await db.insert(products).values(batch).returning({ id: products.id });
-    inserted += result.length;
+  // 配额预检 + 批量写入，同一租户事务内完成
+  const result = await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    const existing = await getProductsForTeam(ctx.team.id, shopId, tx);
+    const quota = await checkProductQuota(ctx.team, existing.length, rows.length);
+    if (!quota.allowed) {
+      return { error: quota.reason ?? 'Product quota exceeded' };
+    }
+
+    // 批量写入（分批，避免单条插入过多）
+    const BATCH = 200;
+    let inserted = 0;
+    for (let i = 0; i < validRows.length; i += BATCH) {
+      const batch = validRows.slice(i, i + BATCH);
+      const created = await tx.insert(products).values(batch).returning({ id: products.id });
+      inserted += created.length;
+    }
+    return { inserted };
+  });
+
+  if ('error' in result) {
+    return NextResponse.json({ error: result.error }, { status: 402 });
   }
 
   return NextResponse.json({
     success: true,
     total: rows.length,
-    inserted,
+    inserted: result.inserted,
     errors,
   });
 }

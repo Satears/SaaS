@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { eq, and } from 'drizzle-orm';
 import { aiProjects } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
@@ -47,11 +47,14 @@ export async function PATCH(
 
   const body = updateSchema.parse(await request.json());
 
-  const [updated] = await db
-    .update(aiProjects)
-    .set({ ...body, updatedAt: new Date() })
-    .where(and(eq(aiProjects.id, Number(id)), eq(aiProjects.teamId, ctx.team.id)))
-    .returning();
+  const updated = await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    const [row] = await tx
+      .update(aiProjects)
+      .set({ ...body, updatedAt: new Date() })
+      .where(and(eq(aiProjects.id, Number(id)), eq(aiProjects.teamId, ctx.team.id)))
+      .returning();
+    return row ?? null;
+  });
 
   if (!updated) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -75,10 +78,12 @@ export async function DELETE(
   }
 
   // 软删除
-  await db
-    .update(aiProjects)
-    .set({ deletedAt: new Date() })
-    .where(and(eq(aiProjects.id, Number(id)), eq(aiProjects.teamId, ctx.team.id)));
+  await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    await tx
+      .update(aiProjects)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(aiProjects.id, Number(id)), eq(aiProjects.teamId, ctx.team.id)));
+  });
 
   return NextResponse.json({ success: true });
 }

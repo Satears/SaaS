@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { aiProjects } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
 import { getAiProjectsForTeam } from '@/lib/db/queries';
@@ -38,23 +38,30 @@ export async function POST(request: NextRequest) {
 
   const body = createSchema.parse(await request.json());
 
-  // 项目数配额
-  const existing = await getAiProjectsForTeam(ctx.team.id);
-  const quotaCheck = await checkProjectQuota(ctx.team, existing.length);
-  if (!quotaCheck.allowed) {
-    return NextResponse.json({ error: quotaCheck.reason }, { status: 402 });
+  // 项目数配额校验 + 写入，同一租户事务内完成
+  const result = await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    const existing = await getAiProjectsForTeam(ctx.team.id, tx);
+    const quotaCheck = await checkProjectQuota(ctx.team, existing.length);
+    if (!quotaCheck.allowed) {
+      return { error: quotaCheck.reason ?? 'Project quota exceeded' };
+    }
+
+    const [created] = await tx
+      .insert(aiProjects)
+      .values({
+        teamId: ctx.team.id,
+        name: body.name,
+        description: body.description ?? null,
+        model: body.model ?? 'gpt-4o-mini',
+        systemPrompt: body.systemPrompt ?? null,
+      })
+      .returning();
+    return { project: created };
+  });
+
+  if ('error' in result) {
+    return NextResponse.json({ error: result.error }, { status: 402 });
   }
 
-  const [project] = await db
-    .insert(aiProjects)
-    .values({
-      teamId: ctx.team.id,
-      name: body.name,
-      description: body.description ?? null,
-      model: body.model ?? 'gpt-4o-mini',
-      systemPrompt: body.systemPrompt ?? null,
-    })
-    .returning();
-
-  return NextResponse.json(project, { status: 201 });
+  return NextResponse.json(result.project, { status: 201 });
 }

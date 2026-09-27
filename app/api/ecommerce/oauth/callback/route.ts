@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { eq } from 'drizzle-orm';
 import { shops } from '@/lib/db/schema';
 import { getShopById } from '@/lib/db/queries';
@@ -37,17 +37,20 @@ export async function GET(request: NextRequest) {
   try {
     const credentials = await adapter.handleAuthCallback({ code, redirectUri });
 
-    await db
-      .update(shops)
-      .set({
-        accessToken: credentials.accessToken,
-        refreshToken: credentials.refreshToken ?? null,
-        tokenExpiresAt: credentials.tokenExpiresAt ?? null,
-        externalShopId: credentials.externalShopId ?? null,
-        syncStatus: 'connected',
-        updatedAt: new Date(),
-      })
-      .where(eq(shops.id, shop.id));
+    // OAuth 回调无用户会话，仅能提供 state 还原出的 teamId。
+    await withTenantContext(payload.teamId, null, async (tx) => {
+      await tx
+        .update(shops)
+        .set({
+          accessToken: credentials.accessToken,
+          refreshToken: credentials.refreshToken ?? null,
+          tokenExpiresAt: credentials.tokenExpiresAt ?? null,
+          externalShopId: credentials.externalShopId ?? null,
+          syncStatus: 'connected',
+          updatedAt: new Date(),
+        })
+        .where(eq(shops.id, shop.id));
+    });
 
     // 跳回门店管理页（成功）
     return NextResponse.redirect(

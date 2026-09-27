@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { eq, and } from 'drizzle-orm';
 import { shops, products, orders } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
@@ -33,7 +33,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'shopId required' }, { status: 400 });
   }
 
-  const shop = await getShopById(shopId, ctx.team.id);
+  // 门店归属校验 + 标记同步中，放在同一租户事务内
+  const shop = await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    const s = await getShopById(shopId, ctx.team.id, tx);
+    if (s) {
+      await tx
+        .update(shops)
+        .set({ syncStatus: 'syncing', updatedAt: new Date() })
+        .where(and(eq(shops.id, s.id), eq(shops.teamId, ctx.team.id)));
+    }
+    return s;
+  });
+
   if (!shop) {
     return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
   }
@@ -46,55 +57,57 @@ export async function POST(request: NextRequest) {
 
   const adapter = getPlatformAdapter(shop.platform);
 
-  // 更新同步状态
-  await db
-    .update(shops)
-    .set({ syncStatus: 'syncing', updatedAt: new Date() })
-    .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
-
   try {
+    // 平台 API 为外部网络调用，置于事务之外
     const [syncedProducts, syncedOrders] = await Promise.all([
       adapter.syncProducts({ accessToken: shop.accessToken, externalShopId: shop.externalShopId ?? undefined }),
       adapter.syncOrders({ accessToken: shop.accessToken, externalShopId: shop.externalShopId ?? undefined }),
     ]);
 
-    // 写入商品（批量）
-    let productCount = 0;
-    for (const p of syncedProducts) {
-      await db.insert(products).values({
-        teamId: ctx.team.id,
-        shopId: shop.id,
-        title: p.title.slice(0, 200),
-        description: p.description ?? null,
-        category: p.category ?? null,
-        price: p.price ?? null,
-        sku: p.sku ?? null,
-        images: p.images ?? null,
-        attributes: p.attributes ?? null,
-      });
-      productCount++;
-    }
+    // 商品/订单写入 + 状态回写，同一租户事务内完成
+    const { productCount, orderCount } = await withTenantContext(
+      ctx.team.id,
+      ctx.user.id,
+      async (tx) => {
+        let productCount = 0;
+        for (const p of syncedProducts) {
+          await tx.insert(products).values({
+            teamId: ctx.team.id,
+            shopId: shop.id,
+            title: p.title.slice(0, 200),
+            description: p.description ?? null,
+            category: p.category ?? null,
+            price: p.price ?? null,
+            sku: p.sku ?? null,
+            images: p.images ?? null,
+            attributes: p.attributes ?? null,
+          });
+          productCount++;
+        }
 
-    // 写入订单（批量）
-    let orderCount = 0;
-    for (const o of syncedOrders) {
-      await db.insert(orders).values({
-        teamId: ctx.team.id,
-        shopId: shop.id,
-        orderNo: o.orderNo ?? null,
-        amount: o.amount ?? null,
-        quantity: o.quantity ?? 1,
-        status: o.status ?? 'paid',
-        customerId: o.customerId ?? null,
-        orderedAt: o.orderedAt ?? new Date(),
-      });
-      orderCount++;
-    }
+        let orderCount = 0;
+        for (const o of syncedOrders) {
+          await tx.insert(orders).values({
+            teamId: ctx.team.id,
+            shopId: shop.id,
+            orderNo: o.orderNo ?? null,
+            amount: o.amount ?? null,
+            quantity: o.quantity ?? 1,
+            status: o.status ?? 'paid',
+            customerId: o.customerId ?? null,
+            orderedAt: o.orderedAt ?? new Date(),
+          });
+          orderCount++;
+        }
 
-    await db
-      .update(shops)
-      .set({ syncStatus: 'connected', lastSyncedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
+        await tx
+          .update(shops)
+          .set({ syncStatus: 'connected', lastSyncedAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
+
+        return { productCount, orderCount };
+      }
+    );
 
     return NextResponse.json({
       success: true,
@@ -102,10 +115,12 @@ export async function POST(request: NextRequest) {
       orders: orderCount,
     });
   } catch (e: any) {
-    await db
-      .update(shops)
-      .set({ syncStatus: 'error', updatedAt: new Date() })
-      .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
+    await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+      await tx
+        .update(shops)
+        .set({ syncStatus: 'error', updatedAt: new Date() })
+        .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
+    });
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

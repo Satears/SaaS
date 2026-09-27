@@ -1,8 +1,9 @@
 'use server';
 
 import { z } from 'zod';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db/drizzle';
+import { withTenantContext, type TenantTx } from '@/lib/db/tenant';
 import {
   users,
   teams,
@@ -10,7 +11,6 @@ import {
   activityLogs,
   type NewUser,
   type NewTeam,
-  type NewTeamMember,
   type NewActivityLog,
   ActivityType,
   invitations
@@ -34,7 +34,8 @@ async function logActivity(
   teamId: number | null | undefined,
   userId: number,
   type: ActivityType,
-  ipAddress?: string
+  ipAddress?: string,
+  tx?: TenantTx
 ) {
   if (teamId === null || teamId === undefined) {
     return;
@@ -45,7 +46,14 @@ async function logActivity(
     action: type,
     ipAddress: ipAddress || ''
   };
-  await db.insert(activityLogs).values(newActivity);
+  // activity_logs 受 RLS 约束，须在租户上下文事务内写入。
+  if (tx) {
+    await tx.insert(activityLogs).values(newActivity);
+    return;
+  }
+  await withTenantContext(teamId, userId, async (t) => {
+    await t.insert(activityLogs).values(newActivity);
+  });
 }
 
 /**
@@ -74,25 +82,32 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     return { error: '尝试过于频繁，请 15 分钟后再试。' };
   }
 
-  const userWithTeam = await db
-    .select({
-      user: users,
-      team: teams
-    })
+  // users 为全局表，不受 RLS；先按邮箱定位用户（需要其 id 才能设置 app.user_id）。
+  const [foundUser] = await db
+    .select()
     .from(users)
-    .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
-    .leftJoin(teams, eq(teamMembers.teamId, teams.id))
     .where(eq(users.email, email))
     .limit(1);
 
-  if (userWithTeam.length === 0) {
+  if (!foundUser) {
     return {
       error: '邮箱或密码不正确，请重试。',
       email
     };
   }
 
-  const { user: foundUser, team: foundTeam } = userWithTeam[0];
+  // team_members / teams 受 RLS 约束：登录阶段尚无 team_id，只能靠 app.user_id
+  // 放行「本人所属」的行（见 docs/RLS.md 第八节）。
+  const foundTeam = await withTenantContext(null, foundUser.id, async (tx) => {
+    const rows = await tx
+      .select({ team: teams })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(eq(teamMembers.userId, foundUser.id))
+      .orderBy(asc(teamMembers.id))
+      .limit(1);
+    return rows[0]?.team ?? null;
+  });
 
   const isPasswordValid = await comparePasswords(
     password,
@@ -110,7 +125,6 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     setSession(foundUser),
     logActivity(foundTeam?.id, foundUser.id, ActivityType.SIGN_IN)
   ]);
-
   const redirectTo = formData.get('redirect') as string | null;
   if (redirectTo === 'checkout') {
     const priceId = formData.get('priceId') as string;
@@ -170,70 +184,102 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
   let createdTeam: typeof teams.$inferSelect | null = null;
 
   if (inviteId) {
-    // Check if there's a valid invitation
-    const [invitation] = await db
-      .select()
-      .from(invitations)
-      .where(
-        and(
-          eq(invitations.id, parseInt(inviteId)),
-          eq(invitations.email, email),
-          eq(invitations.status, 'pending')
-        )
-      )
-      .limit(1);
+    // invitations / team_members / teams 均受 RLS 约束。此阶段尚无 team_id
+    // （正是要解析的目标），只能设置 app.user_id。
+    // ⚠️ invitations 策略仅按 team_id 放行，RLS 启用后这次读取会返回空 ——
+    // 需要特权路径，见报告。
+    const [invitation] = await withTenantContext(
+      null,
+      createdUser.id,
+      async (tx) => {
+        return await tx
+          .select()
+          .from(invitations)
+          .where(
+            and(
+              eq(invitations.id, parseInt(inviteId)),
+              eq(invitations.email, email),
+              eq(invitations.status, 'pending')
+            )
+          )
+          .limit(1);
+      }
+    );
 
-    if (invitation) {
-      teamId = invitation.teamId;
-      userRole = (invitation.role as 'owner' | 'admin' | 'member') || 'member';
+    if (!invitation) {
+      return { error: 'Invalid or expired invitation.', email };
+    }
 
-      await db
+    teamId = invitation.teamId;
+    userRole = (invitation.role as 'owner' | 'admin' | 'member') || 'member';
+
+    // 同租户的多次写入放进同一个事务。
+    createdTeam = await withTenantContext(teamId, createdUser.id, async (tx) => {
+      await tx
         .update(invitations)
         .set({ status: 'accepted' })
         .where(eq(invitations.id, invitation.id));
 
-      await logActivity(teamId, createdUser.id, ActivityType.ACCEPT_INVITATION);
+      await tx.insert(teamMembers).values({
+        userId: createdUser.id,
+        teamId,
+        role: userRole,
+      });
 
-      [createdTeam] = await db
+      await logActivity(
+        teamId,
+        createdUser.id,
+        ActivityType.ACCEPT_INVITATION,
+        undefined,
+        tx
+      );
+      await logActivity(teamId, createdUser.id, ActivityType.SIGN_UP, undefined, tx);
+
+      const [team] = await tx
         .select()
         .from(teams)
         .where(eq(teams.id, teamId))
         .limit(1);
-    } else {
-      return { error: 'Invalid or expired invitation.', email };
-    }
+      return team ?? null;
+    });
   } else {
-    // Create a new team if there's no invitation
+    // Create a new team if there's no invitation.
+    // 新建 team 此刻尚无 id，teams 策略的 WITH CHECK 靠 app.user_id 非空放行；
+    // team_members 的 WITH CHECK 也放行 user_id = app.user_id。
     const newTeam: NewTeam = {
       name: `${email}'s Team`
     };
 
-    [createdTeam] = await db.insert(teams).values(newTeam).returning();
+    const team = await withTenantContext(null, createdUser.id, async (tx) => {
+      const [created] = await tx.insert(teams).values(newTeam).returning();
+      if (!created) return null;
+      await tx.insert(teamMembers).values({
+        userId: createdUser.id,
+        teamId: created.id,
+        role: 'owner',
+      });
+      return created;
+    });
 
-    if (!createdTeam) {
+    if (!team) {
       return {
         error: 'Failed to create team. Please try again.',
         email
       };
     }
 
-    teamId = createdTeam.id;
+    createdTeam = team;
+    teamId = team.id;
     userRole = 'owner';
 
-    await logActivity(teamId, createdUser.id, ActivityType.CREATE_TEAM);
+    // activity_logs 策略要求 app.team_id，此时 team 已创建，带 team 上下文写入。
+    await withTenantContext(teamId, createdUser.id, async (tx) => {
+      await logActivity(teamId, createdUser.id, ActivityType.CREATE_TEAM, undefined, tx);
+      await logActivity(teamId, createdUser.id, ActivityType.SIGN_UP, undefined, tx);
+    });
   }
 
-  const newTeamMember: NewTeamMember = {
-    userId: createdUser.id,
-    teamId: teamId,
-    role: userRole
-  };
-
-  await Promise.all([
-    db.insert(teamMembers).values(newTeamMember),
-    logActivity(teamId, createdUser.id, ActivityType.SIGN_UP),
-    setSession(createdUser)
-  ]);
+  await setSession(createdUser);
 
   const redirectTo = formData.get('redirect') as string | null;
   if (redirectTo === 'checkout') {
@@ -347,14 +393,17 @@ export const deleteAccount = validatedActionWithUser(
       .where(eq(users.id, user.id));
 
     if (userWithTeam?.teamId) {
-      await db
-        .delete(teamMembers)
-        .where(
-          and(
-            eq(teamMembers.userId, user.id),
-            eq(teamMembers.teamId, userWithTeam.teamId)
-          )
-        );
+      const teamId = userWithTeam.teamId;
+      await withTenantContext(teamId, user.id, async (tx) => {
+        await tx
+          .delete(teamMembers)
+          .where(
+            and(
+              eq(teamMembers.userId, user.id),
+              eq(teamMembers.teamId, teamId)
+            )
+          );
+      });
     }
 
     (await cookies()).delete('session');
@@ -396,48 +445,48 @@ export const removeTeamMember = validatedActionWithUser(
     if (!userWithTeam?.teamId) {
       return { error: 'User is not part of a team' };
     }
+    const teamId = userWithTeam.teamId;
 
-    // 服务端角色校验：前端隐藏按钮不构成权限边界
-    const callerRole = await getMembershipForUser(user.id, userWithTeam.teamId);
-    if (callerRole !== 'owner' && callerRole !== 'admin') {
-      return { error: '没有权限移除团队成员' };
-    }
+    // 同一业务动作的多次查询/写入放在同一个租户事务内。
+    return await withTenantContext(teamId, user.id, async (tx) => {
+      // 服务端角色校验：前端隐藏按钮不构成权限边界
+      const callerRole = await getMembershipForUser(user.id, teamId, tx);
+      if (callerRole !== 'owner' && callerRole !== 'admin') {
+        return { error: '没有权限移除团队成员' };
+      }
 
-    const [target] = await db
-      .select()
-      .from(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, userWithTeam.teamId)
+      const [target] = await tx
+        .select()
+        .from(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.id, memberId),
+            eq(teamMembers.teamId, teamId)
+          )
         )
-      )
-      .limit(1);
+        .limit(1);
 
-    if (!target) {
-      return { error: '成员不存在' };
-    }
+      if (!target) {
+        return { error: '成员不存在' };
+      }
 
-    if (target.role === 'owner' && callerRole !== 'owner') {
-      return { error: '只有所有者可以移除其他所有者' };
-    }
+      if (target.role === 'owner' && callerRole !== 'owner') {
+        return { error: '只有所有者可以移除其他所有者' };
+      }
 
-    await db
-      .delete(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, userWithTeam.teamId)
-        )
-      );
+      await tx
+        .delete(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.id, memberId),
+            eq(teamMembers.teamId, teamId)
+          )
+        );
 
-    await logActivity(
-      userWithTeam.teamId,
-      user.id,
-      ActivityType.REMOVE_TEAM_MEMBER
-    );
+      await logActivity(teamId, user.id, ActivityType.REMOVE_TEAM_MEMBER, undefined, tx);
 
-    return { success: 'Team member removed successfully' };
+      return { success: 'Team member removed successfully' };
+    });
   }
 );
 
@@ -455,64 +504,64 @@ export const inviteTeamMember = validatedActionWithUser(
     if (!userWithTeam?.teamId) {
       return { error: 'User is not part of a team' };
     }
+    const teamId = userWithTeam.teamId;
 
-    // 服务端角色校验：普通成员不得邀请他人，也不得邀请为 owner
-    const callerRole = await getMembershipForUser(user.id, userWithTeam.teamId);
-    if (callerRole !== 'owner' && callerRole !== 'admin') {
-      return { error: '没有权限邀请团队成员' };
-    }
-    if (role === 'owner' && callerRole !== 'owner') {
-      return { error: '只有所有者可以邀请所有者' };
-    }
+    // 同一业务动作的多次查询/写入放在同一个租户事务内。
+    return await withTenantContext(teamId, user.id, async (tx) => {
+      // 服务端角色校验：普通成员不得邀请他人，也不得邀请为 owner
+      const callerRole = await getMembershipForUser(user.id, teamId, tx);
+      if (callerRole !== 'owner' && callerRole !== 'admin') {
+        return { error: '没有权限邀请团队成员' };
+      }
+      if (role === 'owner' && callerRole !== 'owner') {
+        return { error: '只有所有者可以邀请所有者' };
+      }
 
-    const existingMember = await db
-      .select()
-      .from(users)
-      .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
-      .where(
-        and(eq(users.email, email), eq(teamMembers.teamId, userWithTeam.teamId))
-      )
-      .limit(1);
-
-    if (existingMember.length > 0) {
-      return { error: 'User is already a member of this team' };
-    }
-
-    // Check if there's an existing invitation
-    const existingInvitation = await db
-      .select()
-      .from(invitations)
-      .where(
-        and(
-          eq(invitations.email, email),
-          eq(invitations.teamId, userWithTeam.teamId),
-          eq(invitations.status, 'pending')
+      const existingMember = await tx
+        .select()
+        .from(users)
+        .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
+        .where(
+          and(eq(users.email, email), eq(teamMembers.teamId, teamId))
         )
-      )
-      .limit(1);
+        .limit(1);
 
-    if (existingInvitation.length > 0) {
-      return { error: 'An invitation has already been sent to this email' };
-    }
+      if (existingMember.length > 0) {
+        return { error: 'User is already a member of this team' };
+      }
 
-    // Create a new invitation
-    await db.insert(invitations).values({
-      teamId: userWithTeam.teamId,
-      email,
-      role,
-      invitedBy: user.id,
-      status: 'pending'
+      // Check if there's an existing invitation
+      const existingInvitation = await tx
+        .select()
+        .from(invitations)
+        .where(
+          and(
+            eq(invitations.email, email),
+            eq(invitations.teamId, teamId),
+            eq(invitations.status, 'pending')
+          )
+        )
+        .limit(1);
+
+      if (existingInvitation.length > 0) {
+        return { error: 'An invitation has already been sent to this email' };
+      }
+
+      // Create a new invitation
+      await tx.insert(invitations).values({
+        teamId,
+        email,
+        role,
+        invitedBy: user.id,
+        status: 'pending'
+      });
+
+      await logActivity(teamId, user.id, ActivityType.INVITE_TEAM_MEMBER, undefined, tx);
+
+      // TODO: Send invitation email and include ?inviteId={id} to sign-up URL
+      // await sendInvitationEmail(email, userWithTeam.team.name, role)
+
+      return { success: '邀请已发送。' };
     });
-
-    await logActivity(
-      userWithTeam.teamId,
-      user.id,
-      ActivityType.INVITE_TEAM_MEMBER
-    );
-
-    // TODO: Send invitation email and include ?inviteId={id} to sign-up URL
-    // await sendInvitationEmail(email, userWithTeam.team.name, role)
-
-    return { success: '邀请已发送。' };
   }
 );

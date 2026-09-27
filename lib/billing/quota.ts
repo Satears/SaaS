@@ -1,4 +1,5 @@
 import { getTeamQuota, getTeamUsage } from '@/lib/db/queries';
+import { type TenantTx } from '@/lib/db/tenant';
 import { Team } from '@/lib/db/schema';
 
 export type QuotaCheckResult = {
@@ -12,10 +13,12 @@ export type QuotaCheckResult = {
  * 校验租户是否还有配额余量，用于 AI 调用前拦截。
  * - 检查本月 token 是否超出
  * - 检查今日 API 调用次数是否超出
+ *
+ * @param tx 若调用方已处于租户上下文事务中，透传给 usage 查询（避免嵌套 begin）。
  */
-export async function checkQuota(team: Team): Promise<QuotaCheckResult> {
+export async function checkQuota(team: Team, tx?: TenantTx): Promise<QuotaCheckResult> {
   const quota = await getTeamQuota(team);
-  const usage = await getTeamUsage(team.id);
+  const usage = await getTeamUsage(team.id, tx);
 
   if (
     quota.quotaTokenMonthly > 0 &&

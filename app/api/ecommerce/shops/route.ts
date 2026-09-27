@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { shops } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
 import { getShopsForTeam } from '@/lib/db/queries';
@@ -35,17 +35,20 @@ export async function POST(request: NextRequest) {
 
   const body = createSchema.parse(await request.json());
 
-  const [shop] = await db
-    .insert(shops)
-    .values({
-      teamId: ctx.team.id,
-      name: body.name,
-      platform: body.platform ?? 'miniprogram',
-      domain: body.domain ?? null,
-      category: body.category ?? null,
-      currency: body.currency ?? 'CNY',
-    })
-    .returning();
+  const shop = await withTenantContext(ctx.team.id, ctx.user.id, async (tx) => {
+    const [created] = await tx
+      .insert(shops)
+      .values({
+        teamId: ctx.team.id,
+        name: body.name,
+        platform: body.platform ?? 'miniprogram',
+        domain: body.domain ?? null,
+        category: body.category ?? null,
+        currency: body.currency ?? 'CNY',
+      })
+      .returning();
+    return created;
+  });
 
   return NextResponse.json(shop, { status: 201 });
 }

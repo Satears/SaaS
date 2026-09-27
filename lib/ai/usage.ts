@@ -1,11 +1,13 @@
 import 'server-only';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext, type TenantTx } from '@/lib/db/tenant';
 import { usageRecords, type NewUsageRecord } from '@/lib/db/schema';
 import { estimateCostCents } from './provider';
 
 /**
  * 记录一次 AI 调用用量（写入 usage_records 表）。
  * 该记录是配额扣减与账单的基础。
+ *
+ * @param tx 若调用方已处于租户上下文事务中，传入该事务句柄复用（避免嵌套 begin）。
  */
 export async function recordUsage(params: {
   teamId: number;
@@ -16,7 +18,7 @@ export async function recordUsage(params: {
   provider: string;
   inputTokens: number;
   outputTokens: number;
-}): Promise<void> {
+}, tx?: TenantTx): Promise<void> {
   const id = await nextUsageId();
   const costCents = estimateCostCents(
     params.provider,
@@ -37,7 +39,13 @@ export async function recordUsage(params: {
     costCents,
   };
 
-  await db.insert(usageRecords).values(record);
+  if (tx) {
+    await tx.insert(usageRecords).values(record);
+    return;
+  }
+  await withTenantContext(params.teamId, null, async (t) => {
+    await t.insert(usageRecords).values(record);
+  });
 }
 
 /**

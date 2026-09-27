@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { apiKeys, type NewApiKey } from '@/lib/db/schema';
 import { getApiKeyByHash } from '@/lib/db/queries';
 
@@ -41,12 +41,17 @@ export async function createApiKey(
     expiresAt: expiresAt ?? null,
   };
 
-  await db.insert(apiKeys).values(record);
+  await withTenantContext(teamId, null, async (tx) => {
+    await tx.insert(apiKeys).values(record);
+  });
   return { plaintext };
 }
 
 /**
  * 校验 API Key 是否有效，返回对应的 apiKey 记录（含 teamId）。
+ *
+ * ⚠️ 认证入口：此时尚无 team_id，无法提供租户上下文；api_keys 受 RLS 约束，
+ * RLS 启用后需改为特权路径（SECURITY DEFINER）。详见 queries.getApiKeyByHash。
  */
 export async function validateApiKey(plaintext: string) {
   if (!plaintext || !plaintext.startsWith(KEY_PREFIX)) {
@@ -65,8 +70,10 @@ export async function validateApiKey(plaintext: string) {
  * 撤销 API Key。
  */
 export async function revokeApiKey(keyId: number, teamId: number) {
-  await db
-    .update(apiKeys)
-    .set({ isActive: false, revokedAt: new Date() })
-    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.teamId, teamId)));
+  await withTenantContext(teamId, null, async (tx) => {
+    await tx
+      .update(apiKeys)
+      .set({ isActive: false, revokedAt: new Date() })
+      .where(and(eq(apiKeys.id, keyId), eq(apiKeys.teamId, teamId)));
+  });
 }

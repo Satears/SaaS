@@ -1,5 +1,5 @@
 import 'server-only';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { eq, and, desc } from 'drizzle-orm';
 import {
   knowledgeEntries,
@@ -17,11 +17,13 @@ import { getEmbedder, cosineSimilarity } from './embedding';
 export async function listKnowledge(teamId: number, shopId?: number) {
   const conditions = [eq(knowledgeEntries.teamId, teamId)];
   if (shopId) conditions.push(eq(knowledgeEntries.shopId, shopId));
-  return await db
-    .select()
-    .from(knowledgeEntries)
-    .where(and(...conditions))
-    .orderBy(desc(knowledgeEntries.updatedAt));
+  return await withTenantContext(teamId, null, async (tx) => {
+    return await tx
+      .select()
+      .from(knowledgeEntries)
+      .where(and(...conditions))
+      .orderBy(desc(knowledgeEntries.updatedAt));
+  });
 }
 
 export async function createKnowledge(entry: NewKnowledgeEntry) {
@@ -31,8 +33,10 @@ export async function createKnowledge(entry: NewKnowledgeEntry) {
     const text = `${entry.question}\n${entry.answer}`;
     entry.embedding = await embedder.embed(text);
   }
-  const [created] = await db.insert(knowledgeEntries).values(entry).returning();
-  return created;
+  return await withTenantContext(entry.teamId, null, async (tx) => {
+    const [created] = await tx.insert(knowledgeEntries).values(entry).returning();
+    return created;
+  });
 }
 
 /** 允许被更新的字段白名单——防止把 teamId / id / shopId 一并改写。 */
@@ -45,18 +49,22 @@ export async function updateKnowledge(
   teamId: number,
   data: KnowledgeUpdate
 ) {
-  const [updated] = await db
-    .update(knowledgeEntries)
-    .set({ ...data, updatedAt: new Date() })
-    .where(and(eq(knowledgeEntries.id, id), eq(knowledgeEntries.teamId, teamId)))
-    .returning();
-  return updated;
+  return await withTenantContext(teamId, null, async (tx) => {
+    const [updated] = await tx
+      .update(knowledgeEntries)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(knowledgeEntries.id, id), eq(knowledgeEntries.teamId, teamId)))
+      .returning();
+    return updated;
+  });
 }
 
 export async function deleteKnowledge(id: number, teamId: number) {
-  await db
-    .delete(knowledgeEntries)
-    .where(and(eq(knowledgeEntries.id, id), eq(knowledgeEntries.teamId, teamId)));
+  await withTenantContext(teamId, null, async (tx) => {
+    await tx
+      .delete(knowledgeEntries)
+      .where(and(eq(knowledgeEntries.id, id), eq(knowledgeEntries.teamId, teamId)));
+  });
 }
 
 /**
@@ -77,14 +85,16 @@ export async function searchKnowledge(
   if (shopId) conditions.push(eq(knowledgeEntries.shopId, shopId));
 
   // 拉取候选集（全量，生产可加预过滤；此处条目量级小）
-  const all = await db
-    .select()
-    .from(knowledgeEntries)
-    .where(and(...conditions));
+  const all = await withTenantContext(teamId, null, async (tx) => {
+    return await tx
+      .select()
+      .from(knowledgeEntries)
+      .where(and(...conditions));
+  });
 
   if (all.length === 0) return [];
 
-  // 1. 向量语义检索
+  // 1. 向量语义检索（embedding 是网络调用，置于事务之外）
   const embedder = getEmbedder();
   let scored: { entry: (typeof all)[number]; score: number }[] = [];
 
@@ -148,46 +158,57 @@ export async function createSession(input: {
   customerName?: string | null;
   language?: string;
 }) {
-  const [session] = await db
-    .insert(serviceSessions)
-    .values({
-      teamId: input.teamId,
-      shopId: input.shopId ?? null,
-      userId: input.userId ?? null,
-      customerName: input.customerName ?? null,
-      language: input.language ?? 'zh',
-    })
-    .returning();
-  return session;
+  return await withTenantContext(input.teamId, input.userId ?? null, async (tx) => {
+    const [session] = await tx
+      .insert(serviceSessions)
+      .values({
+        teamId: input.teamId,
+        shopId: input.shopId ?? null,
+        userId: input.userId ?? null,
+        customerName: input.customerName ?? null,
+        language: input.language ?? 'zh',
+      })
+      .returning();
+    return session;
+  });
 }
 
 export async function getSession(sessionId: number, teamId: number) {
-  const [session] = await db
-    .select()
-    .from(serviceSessions)
-    .where(and(eq(serviceSessions.id, sessionId), eq(serviceSessions.teamId, teamId)))
-    .limit(1);
-  return session ?? null;
+  return await withTenantContext(teamId, null, async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(serviceSessions)
+      .where(and(eq(serviceSessions.id, sessionId), eq(serviceSessions.teamId, teamId)))
+      .limit(1);
+    return session ?? null;
+  });
 }
 
 /**
  * 读取会话消息。service_messages 表本身没有 team_id 列，
  * 因此必须先校验会话归属租户，避免跨租户读取。
+ * 会话校验与消息读取放进同一个事务（内联 getSession 逻辑，避免嵌套）。
  */
 export async function getSessionMessages(
   sessionId: number,
   teamId: number,
   limit = 50
 ) {
-  const session = await getSession(sessionId, teamId);
-  if (!session) return [];
+  return await withTenantContext(teamId, null, async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(serviceSessions)
+      .where(and(eq(serviceSessions.id, sessionId), eq(serviceSessions.teamId, teamId)))
+      .limit(1);
+    if (!session) return [];
 
-  return await db
-    .select()
-    .from(serviceMessages)
-    .where(eq(serviceMessages.sessionId, sessionId))
-    .orderBy(serviceMessages.createdAt)
-    .limit(limit);
+    return await tx
+      .select()
+      .from(serviceMessages)
+      .where(eq(serviceMessages.sessionId, sessionId))
+      .orderBy(serviceMessages.createdAt)
+      .limit(limit);
+  });
 }
 
 export async function appendMessage(input: {
@@ -198,29 +219,43 @@ export async function appendMessage(input: {
   tokens?: number;
 }) {
   // 同上：写入前校验会话归属，防止向他人会话追加消息
-  const session = await getSession(input.sessionId, input.teamId);
-  if (!session) {
-    throw new Error('Session not found in team');
-  }
+  // 会话校验与消息写入放进同一个事务（内联 getSession 逻辑，避免嵌套）。
+  return await withTenantContext(input.teamId, null, async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(serviceSessions)
+      .where(
+        and(
+          eq(serviceSessions.id, input.sessionId),
+          eq(serviceSessions.teamId, input.teamId)
+        )
+      )
+      .limit(1);
+    if (!session) {
+      throw new Error('Session not found in team');
+    }
 
-  const [msg] = await db
-    .insert(serviceMessages)
-    .values({
-      sessionId: input.sessionId,
-      role: input.role,
-      content: input.content,
-      tokens: input.tokens ?? 0,
-    })
-    .returning();
-  return msg;
+    const [msg] = await tx
+      .insert(serviceMessages)
+      .values({
+        sessionId: input.sessionId,
+        role: input.role,
+        content: input.content,
+        tokens: input.tokens ?? 0,
+      })
+      .returning();
+    return msg;
+  });
 }
 
 export async function listSessions(teamId: number) {
-  return await db
-    .select()
-    .from(serviceSessions)
-    .where(eq(serviceSessions.teamId, teamId))
-    .orderBy(serviceSessions.updatedAt);
+  return await withTenantContext(teamId, null, async (tx) => {
+    return await tx
+      .select()
+      .from(serviceSessions)
+      .where(eq(serviceSessions.teamId, teamId))
+      .orderBy(serviceSessions.updatedAt);
+  });
 }
 
 export async function updateSessionStatus(
@@ -228,8 +263,10 @@ export async function updateSessionStatus(
   teamId: number,
   status: 'open' | 'resolved' | 'escalated'
 ) {
-  await db
-    .update(serviceSessions)
-    .set({ status, updatedAt: new Date() })
-    .where(and(eq(serviceSessions.id, sessionId), eq(serviceSessions.teamId, teamId)));
+  await withTenantContext(teamId, null, async (tx) => {
+    await tx
+      .update(serviceSessions)
+      .set({ status, updatedAt: new Date() })
+      .where(and(eq(serviceSessions.id, sessionId), eq(serviceSessions.teamId, teamId)));
+  });
 }

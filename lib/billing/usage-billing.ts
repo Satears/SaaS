@@ -1,8 +1,17 @@
 import 'server-only';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext, type TenantTx } from '@/lib/db/tenant';
 import { eq, and, sql } from 'drizzle-orm';
 import { billingLedger, usageRecords } from '@/lib/db/schema';
 import { getTeamQuota } from '@/lib/db/queries';
+
+/** 复用已有事务句柄，避免嵌套 begin；否则开启新的租户上下文事务。 */
+function runWithContext<T>(
+  teamId: number,
+  tx: TenantTx | undefined,
+  fn: (tx: TenantTx) => Promise<T>
+): Promise<T> {
+  return tx ? fn(tx) : withTenantContext(teamId, null, fn);
+}
 
 /**
  * 用量计费：超出订阅配额的 token 按量计费。
@@ -28,20 +37,26 @@ function currentPeriod(): string {
 
 /**
  * 计算本月超额用量与费用。
+ * @param tx 若调用方已处于租户上下文事务中，复用该句柄。
  */
-export async function calculateOverage(team: { id: number; planTier: string; customQuota: any }) {
+export async function calculateOverage(
+  team: { id: number; planTier: string; customQuota: any },
+  tx?: TenantTx
+) {
   const quota = await getTeamQuota(team);
   const period = currentPeriod();
 
   // 本月总 token（含 input + output）
-  const [usage] = await db
-    .select({
-      totalTokens: sql<number>`COALESCE(SUM(input_tokens + output_tokens), 0)`,
-    })
-    .from(usageRecords)
-    .where(eq(usageRecords.teamId, team.id));
+  const totalTokens = await runWithContext(team.id, tx, async (t) => {
+    const [usage] = await t
+      .select({
+        totalTokens: sql<number>`COALESCE(SUM(input_tokens + output_tokens), 0)`,
+      })
+      .from(usageRecords)
+      .where(eq(usageRecords.teamId, team.id));
+    return Number(usage?.totalTokens ?? 0);
+  });
 
-  const totalTokens = Number(usage?.totalTokens ?? 0);
   const quotaTokens = quota.quotaTokenMonthly ?? 0;
   const overageTokens = Math.max(0, totalTokens - quotaTokens);
 
@@ -61,83 +76,90 @@ export async function calculateOverage(team: { id: number; planTier: string; cus
 
 /**
  * 生成/更新本月超额账单记录（幂等：同一周期只保留一条 pending 记录）。
+ * 读取用量、查询/写入 ledger 全部在同一租户事务内完成。
  */
 export async function syncOverageLedger(team: { id: number; planTier: string; customQuota: any }) {
-  const overage = await calculateOverage(team);
-  const period = overage.period;
+  return await withTenantContext(team.id, null, async (tx) => {
+    const overage = await calculateOverage(team, tx);
+    const period = overage.period;
 
-  const existing = await db
-    .select()
-    .from(billingLedger)
-    .where(
-      and(
-        eq(billingLedger.teamId, team.id),
-        eq(billingLedger.period, period),
-        eq(billingLedger.kind, 'overage')
+    const existing = await tx
+      .select()
+      .from(billingLedger)
+      .where(
+        and(
+          eq(billingLedger.teamId, team.id),
+          eq(billingLedger.period, period),
+          eq(billingLedger.kind, 'overage')
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
-  if (existing.length > 0) {
-    // 更新已有记录（仅当 status 仍为 pending）
-    const record = existing[0];
-    if (record.status === 'pending') {
-      await db
-        .update(billingLedger)
-        .set({
-          overageTokens: overage.overageTokens,
-          amountCents: overage.amountCents,
-          updatedAt: new Date(),
-        })
-        .where(eq(billingLedger.id, record.id));
+    if (existing.length > 0) {
+      // 更新已有记录（仅当 status 仍为 pending）
+      const record = existing[0];
+      if (record.status === 'pending') {
+        await tx
+          .update(billingLedger)
+          .set({
+            overageTokens: overage.overageTokens,
+            amountCents: overage.amountCents,
+            updatedAt: new Date(),
+          })
+          .where(eq(billingLedger.id, record.id));
+      }
+      return record;
     }
-    return record;
-  }
 
-  // 创建新记录
-  const [created] = await db
-    .insert(billingLedger)
-    .values({
-      teamId: team.id,
-      period,
-      kind: 'overage',
-      description: `Overage usage for ${period}`,
-      overageTokens: overage.overageTokens,
-      amountCents: overage.amountCents,
-      currency: overage.currency,
-      status: 'pending',
-    })
-    .returning();
+    // 创建新记录
+    const [created] = await tx
+      .insert(billingLedger)
+      .values({
+        teamId: team.id,
+        period,
+        kind: 'overage',
+        description: `Overage usage for ${period}`,
+        overageTokens: overage.overageTokens,
+        amountCents: overage.amountCents,
+        currency: overage.currency,
+        status: 'pending',
+      })
+      .returning();
 
-  return created;
+    return created;
+  });
 }
 
 /**
  * 获取租户的账单明细列表。
  */
 export async function getLedgerForTeam(teamId: number) {
-  return await db
-    .select()
-    .from(billingLedger)
-    .where(eq(billingLedger.teamId, teamId))
-    .orderBy(sql`created_at DESC`);
+  return await withTenantContext(teamId, null, async (tx) => {
+    return await tx
+      .select()
+      .from(billingLedger)
+      .where(eq(billingLedger.teamId, teamId))
+      .orderBy(sql`created_at DESC`);
+  });
 }
 
 /**
  * 获取租户当前未结清（pending/invoiced）的超额费用总和。
  */
 export async function getOutstandingOverage(teamId: number) {
-  const [result] = await db
-    .select({
-      amount: sql<number>`COALESCE(SUM(amount_cents), 0)`,
-    })
-    .from(billingLedger)
-    .where(
-      and(
-        eq(billingLedger.teamId, teamId),
-        sql`status IN ('pending', 'invoiced')`
-      )
-    );
+  return await withTenantContext(teamId, null, async (tx) => {
+    const [result] = await tx
+      .select({
+        amount: sql<number>`COALESCE(SUM(amount_cents), 0)`,
+      })
+      .from(billingLedger)
+      .where(
+        and(
+          eq(billingLedger.teamId, teamId),
+          sql`status IN ('pending', 'invoiced')`
+        )
+      );
 
-  return Number(result?.amount ?? 0);
+    return Number(result?.amount ?? 0);
+  });
 }

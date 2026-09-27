@@ -1,5 +1,5 @@
 import { eq, asc } from 'drizzle-orm';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { teams, teamMembers } from '@/lib/db/schema';
 import { getUser } from '@/lib/db/queries';
 import { NextRequest, NextResponse } from 'next/server';
@@ -70,16 +70,19 @@ export async function GET(request: NextRequest) {
       throw new Error('No product ID found for this subscription.');
     }
 
-    const userTeam = await db
-      .select({
-        teamId: teamMembers.teamId,
-        stripeCustomerId: teams.stripeCustomerId,
-      })
-      .from(teamMembers)
-      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-      .where(eq(teamMembers.userId, currentUser.id))
-      .orderBy(asc(teamMembers.id))
-      .limit(1);
+    // team_members / teams 受 RLS 约束：尚无 team_id，只能靠 app.user_id 放行「本人所属」行。
+    const userTeam = await withTenantContext(null, currentUser.id, async (tx) => {
+      return await tx
+        .select({
+          teamId: teamMembers.teamId,
+          stripeCustomerId: teams.stripeCustomerId,
+        })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+        .where(eq(teamMembers.userId, currentUser.id))
+        .orderBy(asc(teamMembers.id))
+        .limit(1);
+    });
 
     if (userTeam.length === 0) {
       throw new Error('User is not associated with any team.');
@@ -94,18 +97,20 @@ export async function GET(request: NextRequest) {
 
     const productName = (plan.product as Stripe.Product).name;
 
-    await db
-      .update(teams)
-      .set({
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: subscriptionId,
-        stripeProductId: productId,
-        planName: productName,
-        planTier: mapPlanNameToTier(productName) as any,
-        subscriptionStatus: subscription.status as any,
-        updatedAt: new Date(),
-      })
-      .where(eq(teams.id, teamId));
+    await withTenantContext(teamId, currentUser.id, async (tx) => {
+      await tx
+        .update(teams)
+        .set({
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: subscriptionId,
+          stripeProductId: productId,
+          planName: productName,
+          planTier: mapPlanNameToTier(productName) as any,
+          subscriptionStatus: subscription.status as any,
+          updatedAt: new Date(),
+        })
+        .where(eq(teams.id, teamId));
+    });
 
     return NextResponse.redirect(new URL('/dashboard', request.url));
   } catch (error) {

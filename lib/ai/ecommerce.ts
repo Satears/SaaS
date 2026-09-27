@@ -1,5 +1,5 @@
 import 'server-only';
-import { db } from '@/lib/db/drizzle';
+import { withTenantContext } from '@/lib/db/tenant';
 import { eq } from 'drizzle-orm';
 import { teams, aiContents } from '@/lib/db/schema';
 import { getAiProvider, type ChatMessage } from './provider';
@@ -36,11 +36,15 @@ export async function runSceneCompletion(params: {
 }) {
   const scene = getScene(params.scene);
 
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.id, params.teamId))
-    .limit(1);
+  // 读取租户（teams 受 RLS 约束，需租户上下文）
+  const team = await withTenantContext(params.teamId, null, async (tx) => {
+    const [team] = await tx
+      .select()
+      .from(teams)
+      .where(eq(teams.id, params.teamId))
+      .limit(1);
+    return team;
+  });
 
   if (!team) {
     throw new Error('Tenant not found');
@@ -61,7 +65,7 @@ export async function runSceneCompletion(params: {
     // 场景级条数配额在 service 层通过 ai_contents 计数校验。
   }
 
-  // 3. 调用 Provider（场景系统提示词前置）
+  // 3. 调用 Provider（场景系统提示词前置；网络调用置于事务之外）
   const provider = getAiProvider();
   const result = await provider.chatCompletion({
     model: 'gpt-4o-mini',
@@ -69,29 +73,33 @@ export async function runSceneCompletion(params: {
     temperature: params.temperature,
   });
 
-  // 4. 记录用量
-  await recordUsage({
-    teamId: team.id,
-    projectId: null,
-    apiKeyId: null,
-    kind: `scene:${scene.id}`,
-    model: result.model,
-    provider: result.provider,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-  });
+  // 4 & 5. 记录用量 + 生成内容（同一租户的两次写入放进同一个事务）
+  await withTenantContext(team.id, null, async (tx) => {
+    await recordUsage(
+      {
+        teamId: team.id,
+        projectId: null,
+        apiKeyId: null,
+        kind: `scene:${scene.id}`,
+        model: result.model,
+        provider: result.provider,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      },
+      tx
+    );
 
-  // 5. 记录生成内容（供历史复用）
-  await db.insert(aiContents).values({
-    teamId: team.id,
-    shopId: params.shopId ?? null,
-    productId: params.productId ?? null,
-    scene: scene.id,
-    input: params.inputText ?? null,
-    output: result.content,
-    model: result.model,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
+    await tx.insert(aiContents).values({
+      teamId: team.id,
+      shopId: params.shopId ?? null,
+      productId: params.productId ?? null,
+      scene: scene.id,
+      input: params.inputText ?? null,
+      output: result.content,
+      model: result.model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+    });
   });
 
   return {
@@ -109,14 +117,14 @@ export async function runSceneCompletion(params: {
  * 统计某租户本月各场景的生成条数（用于场景配额展示）。
  */
 export async function getSceneUsageCounts(teamId: number) {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const rows = await db
-    .select({
-      scene: aiContents.scene,
-    })
-    .from(aiContents)
-    .where(eq(aiContents.teamId, teamId));
+  const rows = await withTenantContext(teamId, null, async (tx) => {
+    return await tx
+      .select({
+        scene: aiContents.scene,
+      })
+      .from(aiContents)
+      .where(eq(aiContents.teamId, teamId));
+  });
 
   // 简化：全量计数（生产可加时间过滤）
   const counts: Record<string, number> = {};

@@ -71,6 +71,13 @@
       "when": 1727220959662,
       "tag": "0009_rls_context",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1727307359662,
+      "tag": "0010_privileged_functions",
+      "breakpoints": true
     }
   ]
 }
