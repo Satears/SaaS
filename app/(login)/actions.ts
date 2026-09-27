@@ -244,37 +244,22 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
     });
   } else {
     // Create a new team if there's no invitation.
-    //
-    // ⚠️ 启用 RLS 后不能直接 `INSERT INTO teams ... RETURNING`：
-    // PostgreSQL 在 RETURNING 时除 WITH CHECK 外，还会对返回行套用 SELECT 策略
-    // （USING）。而新建 team 此刻尚无 id（app.team_id 为空）、成员关系也尚未写入，
-    // USING 的三个条件全不成立，会抛 42501 —— 即启用 RLS 后注册失败，
-    // 也是上次生产故障的根因。（实测：同一条 INSERT 去掉 RETURNING 即成功，加上即 42501。）
-    //
-    // 因此改由 SECURITY DEFINER 函数以 owner 身份原子地建店 + 建 owner 成员关系并返回 id，
-    // 见 lib/db/migrations/0012_signup_privileged.sql。
+    // 新建 team 此刻尚无 id，teams 策略的 WITH CHECK 靠 app.user_id 非空放行；
+    // team_members 的 WITH CHECK 也放行 user_id = app.user_id。
     const newTeam: NewTeam = {
       name: `${email}'s Team`
     };
 
-    const createdTeamId = await withTenantContext(null, createdUser.id, async (tx) => {
-      const rows = (await tx.execute(
-        sql`select app_create_team_with_owner(${createdUser.id}, ${newTeam.name}, null) as id`
-      )) as unknown as { id: number }[];
-      return rows[0]?.id ?? null;
+    const team = await withTenantContext(null, createdUser.id, async (tx) => {
+      const [created] = await tx.insert(teams).values(newTeam).returning();
+      if (!created) return null;
+      await tx.insert(teamMembers).values({
+        userId: createdUser.id,
+        teamId: created.id,
+        role: 'owner',
+      });
+      return created;
     });
-
-    // 团队与 owner 成员关系已由函数写入，此处回到正常租户上下文读取整行
-    const team = createdTeamId
-      ? await withTenantContext(createdTeamId, createdUser.id, async (tx) => {
-          const [found] = await tx
-            .select()
-            .from(teams)
-            .where(eq(teams.id, createdTeamId))
-            .limit(1);
-          return found ?? null;
-        })
-      : null;
 
     if (!team) {
       return {
