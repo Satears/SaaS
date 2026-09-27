@@ -3,6 +3,7 @@ import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
 import { getShopById } from '@/lib/db/queries';
 import { getPlatformAdapter } from '@/lib/ecommerce/platforms';
 import { signOAuthState } from '@/lib/ecommerce/oauth-state';
+import { getBaseUrl } from '@/lib/utils';
 
 /**
  * 发起平台 OAuth 授权：生成授权跳转 URL。
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
   }
 
   const adapter = getPlatformAdapter(shop.platform);
-  const redirectUri = `${process.env.BASE_URL ?? 'http://localhost:3000'}/api/ecommerce/oauth/callback`;
+  const redirectUri = `${getBaseUrl()}/api/ecommerce/oauth/callback`;
 
   try {
     const state = await signOAuthState({ shopId: shop.id, teamId: ctx.team.id });

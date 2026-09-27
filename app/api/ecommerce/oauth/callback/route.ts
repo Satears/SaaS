@@ -5,6 +5,7 @@ import { shops } from '@/lib/db/schema';
 import { getShopById } from '@/lib/db/queries';
 import { getPlatformAdapter } from '@/lib/ecommerce/platforms';
 import { verifyOAuthState } from '@/lib/ecommerce/oauth-state';
+import { getBaseUrl } from '@/lib/utils';
 
 /**
  * OAuth 回调：先校验 state 签名还原门店归属，再保存访问凭证。
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
   }
 
   const adapter = getPlatformAdapter(shop.platform);
-  const redirectUri = `${process.env.BASE_URL ?? 'http://localhost:3000'}/api/ecommerce/oauth/callback`;
+  const redirectUri = `${getBaseUrl()}/api/ecommerce/oauth/callback`;
 
   try {
     const credentials = await adapter.handleAuthCallback({ code, redirectUri });
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     // 跳回门店管理页（成功）
     return NextResponse.redirect(
-      `${process.env.BASE_URL ?? 'http://localhost:3000'}/dashboard/ecommerce/shops?connected=1`
+      `${getBaseUrl()}/dashboard/ecommerce/shops?connected=1`
     );
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
