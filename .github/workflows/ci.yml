@@ -1,0 +1,41 @@
+name: CI
+
+# 在 PR 与 main 推送时做最小必要校验：类型检查 + 生产构建。
+# 目的是拦住回归——本项目此前多次出现「本地能过、线上炸」的问题，
+# 而当时并没有任何自动化检查。
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    env:
+      # 构建期只需要「可解析」的占位值，真实凭据绝不进 CI。
+      # next build 会在收集页面数据时实例化 postgres()，缺该变量会因解析失败而报错。
+      POSTGRES_URL: postgres://ci:ci@127.0.0.1:5432/ci
+      AUTH_SECRET: ci-only-placeholder-secret-do-not-use-in-production
+      BASE_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm exec tsc --noEmit
+
+      - name: 生产构建
+        run: pnpm build
