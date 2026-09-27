@@ -47,10 +47,16 @@ export async function withTenantContext<T>(
   fn: (tx: TenantTx) => Promise<T>
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    if (teamId !== null) {
+    // 合并为单条语句发送：两个 set_config 各占一次网络往返，
+    // 合并后每次租户上下文可省下 1 次往返（高频路径上很可观）。
+    if (teamId !== null && userId !== null) {
+      await tx.execute(
+        sql`select set_config('app.team_id', ${String(teamId)}, true),
+                   set_config('app.user_id', ${String(userId)}, true)`
+      );
+    } else if (teamId !== null) {
       await tx.execute(sql`select set_config('app.team_id', ${String(teamId)}, true)`);
-    }
-    if (userId !== null) {
+    } else if (userId !== null) {
       await tx.execute(sql`select set_config('app.user_id', ${String(userId)}, true)`);
     }
     return fn(tx);
