@@ -78,6 +78,13 @@
       "when": 1727307359662,
       "tag": "0010_privileged_functions",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1727393759662,
+      "tag": "0012_signup_privileged",
+      "breakpoints": true
     }
   ]
 }
