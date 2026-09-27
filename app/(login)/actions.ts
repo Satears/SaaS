@@ -65,7 +65,11 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
   const { email, password } = data;
 
   // 防暴力破解：同一 IP + 账号 15 分钟内最多 10 次尝试
-  const rl = rateLimit(`signin:${await getClientIp()}:${email}`, 10, 15 * 60_000);
+  const rl = await rateLimit(
+    `signin:${await getClientIp()}:${email}`,
+    10,
+    15 * 60_000
+  );
   if (!rl.allowed) {
     return { error: '尝试过于频繁，请 15 分钟后再试。' };
   }
@@ -126,7 +130,7 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
   const { email, password, inviteId } = data;
 
   // 防注册刷号：同一 IP 每小时最多 10 次
-  const rl = rateLimit(`signup:${await getClientIp()}`, 10, 60 * 60_000);
+  const rl = await rateLimit(`signup:${await getClientIp()}`, 10, 60 * 60_000);
   if (!rl.allowed) {
     return { error: '注册过于频繁，请稍后再试。' };
   }
@@ -394,7 +398,7 @@ export const removeTeamMember = validatedActionWithUser(
     }
 
     // 服务端角色校验：前端隐藏按钮不构成权限边界
-    const callerRole = await getMembershipForUser(user.id);
+    const callerRole = await getMembershipForUser(user.id, userWithTeam.teamId);
     if (callerRole !== 'owner' && callerRole !== 'admin') {
       return { error: '没有权限移除团队成员' };
     }
@@ -453,7 +457,7 @@ export const inviteTeamMember = validatedActionWithUser(
     }
 
     // 服务端角色校验：普通成员不得邀请他人，也不得邀请为 owner
-    const callerRole = await getMembershipForUser(user.id);
+    const callerRole = await getMembershipForUser(user.id, userWithTeam.teamId);
     if (callerRole !== 'owner' && callerRole !== 'admin') {
       return { error: '没有权限邀请团队成员' };
     }

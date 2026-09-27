@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   await db
     .update(shops)
     .set({ syncStatus: 'syncing', updatedAt: new Date() })
-    .where(eq(shops.id, shop.id));
+    .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
 
   try {
     const [syncedProducts, syncedOrders] = await Promise.all([
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     await db
       .update(shops)
       .set({ syncStatus: 'connected', lastSyncedAt: new Date(), updatedAt: new Date() })
-      .where(eq(shops.id, shop.id));
+      .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
 
     return NextResponse.json({
       success: true,
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     await db
       .update(shops)
       .set({ syncStatus: 'error', updatedAt: new Date() })
-      .where(eq(shops.id, shop.id));
+      .where(and(eq(shops.id, shop.id), eq(shops.teamId, ctx.team.id)));
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

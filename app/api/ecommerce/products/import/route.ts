@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/drizzle';
 import { products } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
-import { getProductsForTeam } from '@/lib/db/queries';
+import { getProductsForTeam, getShopById } from '@/lib/db/queries';
 import { checkProductQuota } from '@/lib/billing/quota';
 import { csvToObjects, productTemplateCsv } from '@/lib/ecommerce/csv';
 
@@ -79,6 +79,12 @@ export async function POST(request: NextRequest) {
       { error: 'shopId and csv are required' },
       { status: 400 }
     );
+  }
+
+  // 门店归属校验：shopId 来自客户端，必须确认属于当前租户
+  const shop = await getShopById(shopId, ctx.team.id);
+  if (!shop) {
+    return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
   }
 
   // 解析 CSV

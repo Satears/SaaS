@@ -148,14 +148,33 @@ export async function handleSubscriptionChange(
   }
 
   if (status === 'active' || status === 'trialing') {
-    const plan = subscription.items.data[0]?.plan;
-    const productName = (plan?.product as Stripe.Product)?.name ?? '';
+    const item = subscription.items.data[0];
+    // 新版 API 中 items[].plan 已废弃，优先取 price.product。
+    // webhook 载荷里 product 未 expand 时是字符串 ID，必须再查一次名称：
+    // 否则 productName 为空会把付费租户错误降级为 free。
+    const rawProduct = item?.price?.product ?? item?.plan?.product;
+    const productId =
+      typeof rawProduct === 'string' ? rawProduct : rawProduct?.id ?? null;
+    let productName =
+      rawProduct && typeof rawProduct === 'object' && 'name' in rawProduct
+        ? rawProduct.name
+        : '';
+
+    if (productId && !productName) {
+      try {
+        productName = (await stripe.products.retrieve(productId)).name;
+      } catch (error) {
+        console.error('Failed to resolve Stripe product name:', productId, error);
+      }
+    }
+
     await updateTeamSubscription(team.id, {
       stripeSubscriptionId: subscriptionId,
-      stripeProductId: plan?.product as string,
-      planName: productName,
+      stripeProductId: productId,
+      // 名称解析失败时保留租户原有套餐，避免误降级
+      planName: productName || team.planName,
       subscriptionStatus: status,
-      planTier: mapPlanNameToTier(productName)
+      planTier: productName ? mapPlanNameToTier(productName) : team.planTier
     });
   } else if (status === 'canceled' || status === 'unpaid') {
     await updateTeamSubscription(team.id, {

@@ -31,7 +31,8 @@ export async function getTenantContext(): Promise<TenantContext> {
     return { user: null, team: null, role: null };
   }
   const team = await getTeamForUser();
-  const role = await getMembershipForUser(user.id);
+  // 角色必须与 team 严格对应，避免多团队用户取到其它团队的角色
+  const role = team ? await getMembershipForUser(user.id, team.id) : null;
   return { user, team, role };
 }
 

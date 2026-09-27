@@ -8,8 +8,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // 基础安全响应头。刻意不启用 CSP：当前依赖 Next 内联脚本与 Stripe
-        // 跳转，未做 nonce 改造前加 CSP 会直接打断页面。
+        // 基础安全响应头。CSP 需要按请求生成 nonce，因此在 proxy.ts 中下发，
+        // 不在此处静态配置。
         source: '/:path*',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },

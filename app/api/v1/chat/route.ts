@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 速率限制：每 API Key 每分钟 30 次
-  const rl = rateLimit(`apikey:${apiKey.id}`, 30, 60_000);
+  const rl = await rateLimit(`apikey:${apiKey.id}`, 30, 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded' },

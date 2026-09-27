@@ -12,7 +12,7 @@ import {
   buildCustomerServicePrompt,
   buildAnalyticsPrompt,
 } from '@/lib/ai/scenes';
-import { getProductById } from '@/lib/db/queries';
+import { getProductById, getShopById } from '@/lib/db/queries';
 import { rateLimit } from '@/lib/security/rate-limit';
 
 const baseSchema = z.object({
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const rl = rateLimit(`ai:scene:${ctx.team.id}`, 30, 60_000);
+  const rl = await rateLimit(`ai:scene:${ctx.team.id}`, 30, 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded' },
@@ -65,6 +65,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (!body || !isAiSceneId(body.scene)) {
     return NextResponse.json({ error: 'Invalid scene' }, { status: 400 });
+  }
+
+  // 门店归属校验：shopId 来自客户端，需确认属于当前租户
+  if (body.shopId) {
+    const shop = await getShopById(Number(body.shopId), ctx.team.id);
+    if (!shop) {
+      return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+    }
   }
 
   try {

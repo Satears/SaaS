@@ -21,11 +21,27 @@ export async function POST(request: NextRequest) {
   }
 
   switch (event.type) {
+    case 'checkout.session.completed': {
+      // 首次订阅成功：此时 subscription.* 事件可能尚未到达，需主动同步一次，
+      // 否则用户付款后仍停在 free 套餐。
+      const session = event.data.object as Stripe.Checkout.Session;
+      const subRef = session.subscription;
+      if (subRef) {
+        const subscriptionId =
+          typeof subRef === 'string' ? subRef : subRef.id;
+        const subscription =
+          await stripe.subscriptions.retrieve(subscriptionId);
+        await handleSubscriptionChange(subscription);
+      }
+      break;
+    }
+    case 'customer.subscription.created':
     case 'customer.subscription.updated':
-    case 'customer.subscription.deleted':
+    case 'customer.subscription.deleted': {
       const subscription = event.data.object as Stripe.Subscription;
       await handleSubscriptionChange(subscription);
       break;
+    }
     default:
       console.log(`Unhandled event type ${event.type}`);
   }

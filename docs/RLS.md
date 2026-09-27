@@ -171,3 +171,26 @@ ALTER TABLE "teams" DISABLE ROW LEVEL SECURITY;
 ```
 
 RLS 是**可随时开关的叠加层**，不影响应用层已有的 team_id 过滤逻辑，回滚无风险。
+
+---
+
+## 七、应用层隔离审查（2026-09-27）
+
+由于 RLS 处于关闭状态，应用层 `team_id` 过滤是**唯一防线**，因此对全部直接数据库访问点
+（9 个文件、20 处 `db.select/insert/update/delete`）做了逐条复核，并修复以下缺口：
+
+| 位置 | 问题 | 处置 |
+|---|---|---|
+| `app/api/ecommerce/products/route.ts` | 请求体 `shopId` 未校验归属，可把商品挂到他人门店 | 写入前 `getShopById(shopId, teamId)` 校验 |
+| `app/api/ecommerce/products/import/route.ts` | 同上（批量导入） | 同上 |
+| `app/api/ai/scenes/route.ts` | `shopId` 直接写入 `ai_contents` | 同上 |
+| `app/api/ai/service/route.ts` | `shopId` 直接写入 `service_sessions` | 同上 |
+| `app/api/ecommerce/sync/route.ts` | `shops` 的三处状态更新仅按主键 | 补 `eq(shops.teamId, ctx.team.id)` |
+| `lib/ai/knowledge.ts` | `getSessionMessages` / `appendMessage` 未校验会话归属；`updateKnowledge` 允许传入 `teamId` | 读写前校验 `getSession(sessionId, teamId)`；更新收敛为字段白名单类型 `KnowledgeUpdate` |
+| `lib/db/queries.ts` | `getMembershipForUser` / `getTeamForUser` 无 `teamId` 作用域且无排序，多团队用户可能取到其它团队角色 | 增加可选 `teamId` 参数与 `ORDER BY team_members.id` 确定性排序；`rbac.getTenantContext` 现在按 `team.id` 取角色 |
+
+复核方式：`npx tsc --noEmit` + `next build` 通过；`next start` 实跑确认
+未登录访问 `/dashboard` 返回 307 → `/sign-in`，且 CSP 已下发、内联脚本带 nonce。
+
+> 这仍属于「应用层兜底」，无法防御绕过应用直接连库的路径。重新打开 RLS 的前置条件
+> 与第三节步骤 2、3 完全一致，未发生变化。

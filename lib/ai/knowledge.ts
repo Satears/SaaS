@@ -35,10 +35,15 @@ export async function createKnowledge(entry: NewKnowledgeEntry) {
   return created;
 }
 
+/** 允许被更新的字段白名单——防止把 teamId / id / shopId 一并改写。 */
+export type KnowledgeUpdate = Partial<
+  Pick<NewKnowledgeEntry, 'question' | 'answer' | 'category' | 'tags' | 'enabled'>
+>;
+
 export async function updateKnowledge(
   id: number,
   teamId: number,
-  data: Partial<NewKnowledgeEntry>
+  data: KnowledgeUpdate
 ) {
   const [updated] = await db
     .update(knowledgeEntries)
@@ -165,7 +170,18 @@ export async function getSession(sessionId: number, teamId: number) {
   return session ?? null;
 }
 
-export async function getSessionMessages(sessionId: number, limit = 50) {
+/**
+ * 读取会话消息。service_messages 表本身没有 team_id 列，
+ * 因此必须先校验会话归属租户，避免跨租户读取。
+ */
+export async function getSessionMessages(
+  sessionId: number,
+  teamId: number,
+  limit = 50
+) {
+  const session = await getSession(sessionId, teamId);
+  if (!session) return [];
+
   return await db
     .select()
     .from(serviceMessages)
@@ -176,10 +192,17 @@ export async function getSessionMessages(sessionId: number, limit = 50) {
 
 export async function appendMessage(input: {
   sessionId: number;
+  teamId: number;
   role: 'user' | 'assistant' | 'system';
   content: string;
   tokens?: number;
 }) {
+  // 同上：写入前校验会话归属，防止向他人会话追加消息
+  const session = await getSession(input.sessionId, input.teamId);
+  if (!session) {
+    throw new Error('Session not found in team');
+  }
+
   const [msg] = await db
     .insert(serviceMessages)
     .values({

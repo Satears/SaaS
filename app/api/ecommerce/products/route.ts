@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db/drizzle';
 import { products } from '@/lib/db/schema';
 import { requireTenantApi, requireRole } from '@/lib/auth/rbac';
-import { getProductsForTeam } from '@/lib/db/queries';
+import { getProductsForTeam, getShopById } from '@/lib/db/queries';
 
 const createSchema = z.object({
   shopId: z.number().int().positive(),
@@ -40,6 +40,12 @@ export async function POST(request: NextRequest) {
   }
 
   const body = createSchema.parse(await request.json());
+
+  // 门店归属校验：禁止把商品挂到其它租户的门店上（shopId 来自客户端）
+  const shop = await getShopById(body.shopId, ctx.team.id);
+  if (!shop) {
+    return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+  }
 
   const [product] = await db
     .insert(products)

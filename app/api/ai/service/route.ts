@@ -14,6 +14,7 @@ import {
 } from '@/lib/ai/knowledge';
 import { getScene } from '@/lib/ai/scenes';
 import { runSceneCompletion } from '@/lib/ai/ecommerce';
+import { getShopById } from '@/lib/db/queries';
 
 const askSchema = z.object({
   sessionId: z.number().int().positive().optional().nullable(),
@@ -41,6 +42,14 @@ export async function POST(request: NextRequest) {
 
   const body = askSchema.parse(await request.json());
 
+  // 门店归属校验：shopId 来自客户端，需确认属于当前租户
+  if (body.shopId) {
+    const shop = await getShopById(body.shopId, ctx.team.id);
+    if (!shop) {
+      return NextResponse.json({ error: 'Shop not found' }, { status: 404 });
+    }
+  }
+
   // 1. 获取或创建会话
   let sessionId = body.sessionId;
   if (!sessionId) {
@@ -61,6 +70,7 @@ export async function POST(request: NextRequest) {
   // 2. 记录用户消息
   await appendMessage({
     sessionId,
+    teamId: ctx.team.id,
     role: 'user',
     content: body.message,
   });
@@ -70,7 +80,7 @@ export async function POST(request: NextRequest) {
   const knowledgeCtx = knowledgeToContext(hits);
 
   // 4. 构建多轮上下文（最近 10 条历史 + 知识库片段）
-  const history = await getSessionMessages(sessionId, 10);
+  const history = await getSessionMessages(sessionId, ctx.team.id, 10);
   const scene = getScene('customer_service');
 
   const messages: ChatMessage[] = [];
@@ -97,6 +107,7 @@ export async function POST(request: NextRequest) {
   // 6. 记录助手消息
   await appendMessage({
     sessionId,
+    teamId: ctx.team.id,
     role: 'assistant',
     content: result.content,
     tokens: result.outputTokens,

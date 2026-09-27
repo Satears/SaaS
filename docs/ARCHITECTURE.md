@@ -63,7 +63,12 @@
 
 - 租户内查询：`getAiProjectsForTeam(teamId)` 等始终以 `teamId` 过滤。
 - 越权防护：按 id 取实体的查询要求同时传入 `teamId`（如 `getShopById(shopId, teamId)`），跨租户访问返回空。
-- 生产可启用 PostgreSQL RLS，以 `SET LOCAL app.team_id` 提供数据库级兜底。
+- **客户端传入的外键必须校验归属**：`shopId` 等来自请求体的字段，写入前一律经
+  `getShopById(shopId, teamId)` 确认属于当前租户（商品新增 / 批量导入 / AI 场景 / 客服会话）。
+- **无 `team_id` 列的子表**（如 `service_messages`）先校验父级归属再读写。
+- **角色与团队强绑定**：`getMembershipForUser(userId, teamId)` 必须带 `teamId`，
+  避免多团队用户取到其它团队的角色（见 `lib/auth/rbac.ts`）。
+- 数据库级 RLS 当前**为关闭状态**（原因见 `docs/RLS.md`），隔离完全依赖上述应用层约束。
 
 ## 4. 认证与 RBAC
 
@@ -71,7 +76,7 @@
 
 1. 邮箱 + 密码注册/登录，密码经 bcrypt（10 轮）哈希存储。
 2. 登录成功后签发 JWT（HS256，`AUTH_SECRET`），写入 HttpOnly Cookie。
-3. 中间件 `middleware.ts` 保护 `/dashboard`、`/admin` 路由，并滑动续期会话。
+3. `proxy.ts`（Next 新约定，替代已 deprecated 的 `middleware.ts`）保护 `/dashboard`、`/admin` 路由、滑动续期会话，并下发 CSP。
 
 ### RBAC 守卫（`lib/auth/rbac.ts`）
 
@@ -134,8 +139,10 @@
 
 ### 安全护栏（`lib/security/rate-limit.ts`）
 
-- 内存级令牌桶限流（单实例），按租户/API Key/IP 维度限流。
-- 生产建议替换为 Redis 分布式限流。
+- 按租户 / API Key / IP 维度限流（登录、注册、AI 接口、开放 API）。
+- 配置 `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` 后走 Upstash Redis REST
+  做**分布式计数**（Vercel 多实例共享，限流才真正生效）；未配置或远端异常时
+  自动降级为单实例内存计数，保证可用性。
 
 ## 7. API 路由
 
@@ -147,6 +154,8 @@
 | `/api/ai/keys` | Session + 角色 | API Key 管理 |
 | `/api/ai/usage` | Session | 用量/配额查询 |
 | `/api/admin/stats` | 平台 admin | 平台统计 |
+| `/api/stripe/checkout` | Session + 归属校验 | Checkout 成功回调（GET，Stripe 重定向要求）；校验会话归属当前用户与团队，不再凭 `session_id` 铸造登录态 |
+| `/api/stripe/webhook` | Stripe 签名 | 订阅变更；处理 `checkout.session.completed` 与 `customer.subscription.*` |
 
 ## 8. 模块边界与目录结构
 
@@ -173,8 +182,14 @@ app/
 - **会话**：JWT HttpOnly Cookie，`secure` + `sameSite=lax`。
 - **API Key**：SHA-256 哈希存储，明文仅返回一次。
 - **输入校验**：所有 API 入口经 Zod schema 校验。
-- **租户隔离**：查询强制 `team_id` 作用域 + 越权断言。
-- **速率限制**：AI 接口按租户/Key 限流。
+- **租户隔离**：查询强制 `team_id` 作用域 + 客户端外键归属校验（见第 3 节）。
+- **速率限制**：登录 / 注册 / AI 接口 / 开放 API 限流，支持 Upstash 分布式计数。
+- **CSP**：由 `proxy.ts` 按请求生成 nonce 下发（`script-src` 使用 nonce），
+  内联脚本全部带 nonce，外部脚本限同源。
+- **响应头**：`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、
+  `Permissions-Policy`、`Strict-Transport-Security`（见 `next.config.ts`）。
+- **Stripe**：`checkout` 成功回调要求已登录且 `client_reference_id` 属于当前用户；
+  webhook 强制验签。
 - **软删除**：用户、项目支持软删除（`deletedAt`）。
 - **审计日志**：关键操作记录到 `activity_logs`。
 
@@ -182,7 +197,7 @@ app/
 
 - **Provider 可插拔**：新增模型服务商仅需实现 `AiProvider` 接口。
 - **定价可配置**：计划与配额存于 `plans` 表，可运行时调整。
-- **限流可替换**：内存限流可无缝替换为 Redis。
+- **限流可扩展**：已支持 Upstash Redis 分布式限流，未配置时自动回落内存实现。
 - **RLS 就绪**：共享表 + `team_id` 已为 RLS 铺路。
 - **用量即账单**：`usage_records` 为后续用量计费/对账提供基础。
 

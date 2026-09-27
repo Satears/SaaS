@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 速率限制：每租户每分钟 20 次
-  const rl = rateLimit(`ai:team:${ctx.team.id}`, 20, 60_000);
+  const rl = await rateLimit(`ai:team:${ctx.team.id}`, 20, 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'Rate limit exceeded. Please slow down.' },

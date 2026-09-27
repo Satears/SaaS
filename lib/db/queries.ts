@@ -1,4 +1,4 @@
-import { desc, and, eq, isNull, sql, gte, count } from 'drizzle-orm';
+import { desc, asc, and, eq, isNull, sql, gte, count } from 'drizzle-orm';
 import { db } from './drizzle';
 import {
   activityLogs,
@@ -100,6 +100,8 @@ export async function getUserWithTeam(userId: number) {
     .from(users)
     .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
     .where(eq(users.id, userId))
+    // 多租户下同一用户可属于多个团队；固定排序保证结果可预期（取最早加入的团队）
+    .orderBy(asc(teamMembers.id))
     .limit(1);
 
   return result[0];
@@ -126,14 +128,25 @@ export async function getActivityLogs() {
     .limit(10);
 }
 
-export async function getTeamForUser() {
+/**
+ * 获取当前用户所属团队。
+ * 未指定 teamId 时取最早加入的团队（多租户下保证结果确定性，避免随机落到某个团队）。
+ */
+export async function getTeamForUser(teamId?: number) {
   const user = await getUser();
   if (!user) {
     return null;
   }
 
   const result = await db.query.teamMembers.findFirst({
-    where: eq(teamMembers.userId, user.id),
+    where:
+      teamId !== undefined
+        ? and(
+            eq(teamMembers.userId, user.id),
+            eq(teamMembers.teamId, teamId)
+          )
+        : eq(teamMembers.userId, user.id),
+    orderBy: [asc(teamMembers.id)],
     with: {
       team: {
         with: {
@@ -160,12 +173,21 @@ export async function getTeamForUser() {
  * 获取当前用户在租户内的角色。
  */
 export async function getMembershipForUser(
-  userId: number
+  userId: number,
+  teamId?: number
 ): Promise<'owner' | 'admin' | 'member' | null> {
+  // 必须按 teamId 限定：否则用户在 A 团队是 owner、在 B 团队是 member 时，
+  // 角色校验可能取到其它团队的角色，造成越权。
+  const conditions = [eq(teamMembers.userId, userId)];
+  if (teamId !== undefined) {
+    conditions.push(eq(teamMembers.teamId, teamId));
+  }
+
   const result = await db
     .select({ role: teamMembers.role })
     .from(teamMembers)
-    .where(eq(teamMembers.userId, userId))
+    .where(and(...conditions))
+    .orderBy(asc(teamMembers.id))
     .limit(1);
 
   return result[0]?.role ?? null;
